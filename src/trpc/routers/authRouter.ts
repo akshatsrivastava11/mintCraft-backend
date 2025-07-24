@@ -1,16 +1,76 @@
 import {procedures, router} from '..'
 import {z} from 'zod'
+import { PrismaClient } from '../../database/generated/prisma'
+const prismaClient=new PrismaClient()
 export const authRouter=router({
-    auth:router({
+
         connectWallet:procedures.input(z.object({
             walletAddress:z.string(),
         }))
         .mutation(async({input,ctx})=>{
-            //create or update the user state in the db
-            //return user profile data
-        })
-    }),
+            try {
+                let user=await prismaClient.user.findUnique({
+                    where:{
+                        wallet:input.walletAddress
+                    },
+                    include:{
+                        aiModels:true,
+                        contents:true,
+                        nfts:true
+                    }
+                })
+                if (!user){
+                    user=await prismaClient.user.create({
+                        data:{
+                            wallet:input.walletAddress
+                        },
+                        include:{
+                            aiModels:true,
+                            contents:true,
+                            nfts:true
+                        }
+                    })
+                }
+                return{
+                    success:true,
+                    message:"Wallet connected successfully",
+                    user:user
+                }
+
+            } catch (error) {
+                console.log("An error occurred while connecting wallet:", error);
+                throw new Error("Failed to connect wallet");
+            }
+        }),
     getProfile:procedures.query(async({ctx})=>{
-        //return current user's profile
+        try {
+            if(!ctx.user){
+                throw new Error("User not authenticated");
+            }
+            const user=await prismaClient.user.findUnique({
+                where:{
+                    id:ctx.user.id
+                },
+                include:{
+                    aiModels:true,
+                    contents:true,
+                    nfts:true,
+                    listings:true,
+                    
+                }
+            })
+            if (!user) {
+                throw new Error("User not found");
+            }
+            return {
+                success: true,
+                message: "Profile fetched successfully",
+                user: user
+            }
+
+        } catch (error) {
+            console.log("An error occurred while fetching profile:", error);
+            throw new Error("Failed to fetch profile");
+        }
     })
 })
