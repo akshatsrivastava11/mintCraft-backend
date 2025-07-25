@@ -1,10 +1,9 @@
-import { createSignerFromKeypair, publicKey, signerIdentity } from '@metaplex-foundation/umi';
-import {initializeGlobalState,initializeUser} from '../../clients/generated/umi/src'
+import { createSignerFromKeypair, signerIdentity ,publicKey} from '@metaplex-foundation/umi';
+import {initializeGlobalState,initializeUser,MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID} from '../../clients/generated/umi/src'
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults'
 import {getKeypairFromFile} from '@solana-developers/helpers'
-import { PublicKey } from '@metaplex-foundation/umi';
 import { SystemProgram } from '@solana/web3.js';
-import { SYSTEM_PROGRAM_ADDRESS } from 'gill/programs';
+
 const getGlobalState = async () => {
 try {
     const wallet= await getKeypairFromFile();
@@ -14,13 +13,14 @@ try {
     umi.use(signerIdentity(signer));
 
 
-   const globalState=umi.eddsa.findPda(
-    AI_MODEL_PROGRAM_ID,
+   const globalState=await  umi.eddsa.findPda(
+    MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
     [Buffer.from("global_state")],
    )
     const globalStateIx=await initializeGlobalState(umi,{
+        authority:signer,
         globalState:globalState,
-        systemProgram:SYSTEM_PROGRAM_ADDRESS
+        systemProgram:publicKey(SystemProgram.programId)
     })
     globalStateIx.sendAndConfirm(umi)
 } catch (error) {
@@ -33,12 +33,13 @@ export const getUserConfig = async (userPublicKey) => {
     try {
         const umi = createUmi("https://api.devnet.solana.com");
         const userConfig=umi.eddsa.findPda(
-            AI_MODEL_PROGRAM_ID,
+            MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
             [Buffer.from("user_config"),userPublicKey.toBuffer()]
         )
         const userConfigIx=await initializeUser(umi,{
+            user:userPublicKey,
             userConfig:userConfig,
-        systemProgram:SYSTEM_PROGRAM_ADDRESS
+        systemProgram:publicKey(SystemProgram.programId)
         })
         const transaction=await userConfigIx.buildAndSign(umi);
         const serializedTransaction = umi.transactions.serialize(transaction)
