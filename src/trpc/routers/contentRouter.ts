@@ -49,7 +49,6 @@ export const contentRouter=router({
                     contentUri:contentUri,
                     creatorId:ctx.user.id,
                     createdAt:new Date(),
-
                                 }
             })
 

@@ -10,6 +10,9 @@ export const aiModelRouter=router({
     register:procedures.input(RegisterAIModelSchema)
             .mutation(async({input,ctx})=>{
                 try {
+                    
+                    //sends the transaction 
+                    
                     if(!ctx.user){
                         throw new TRPCError({
                             code: 'UNAUTHORIZED',
