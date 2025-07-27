@@ -3,13 +3,31 @@ import { createContentSchema } from "../schemas/createContentSchema";
 import {z} from 'zod'
 import { PrismaClient } from "../../database/generated/prisma";
 import { uploadFileToIPFS } from "../../utils/upload";
+import {submitContent,MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID} from '../../clients/nftProgram/umi/src'
+import { PublicKey } from "@solana/web3.js";
+import { uuid } from "zod";
+import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
+import { SYSTEM_PROGRAM_ADDRESS } from "gill/programs";
+import { publicKey } from "@metaplex-foundation/umi";
 const prismaClient = new PrismaClient();
+const umi=createUmi("https://api.devnet.solana.com");
 export const contentRouter=router({
     generate:procedures.input(createContentSchema).mutation(async({input,ctx})=>{
         try {
             if(!ctx.user){
                 throw new Error("User not authenticated");
             }
+            const id=Number(uuid().length(14))
+
+            // const contentAccount=PublicKey.findProgramAddressSync(
+            //     [Buffer.from("content"),Buffer.from(id.toString())],
+            //     new PublicKey(MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID)
+            // 
+
+            
+            const contentAccount=umi.eddsa.findPda(MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
+                [Buffer.from("content"),Buffer.from(id.toString())]
+            )
             const aiModel=await prismaClient.aIModel.findUnique({
                 where:{
                     id:input.aiModelId
@@ -18,7 +36,7 @@ export const contentRouter=router({
             if(!aiModel){
                 throw new Error("AI Model not found");
             }
-
+            
             const contentType=input.contentType;
             if (!contentType){
                 throw new Error("Content type is required");
@@ -38,6 +56,21 @@ export const contentRouter=router({
             }, "metadata", ctx.user.wallet);
             const contentUri = await uploadFileToIPFS(input.contentData, "content", ctx.user.wallet);
             
+            const serializedTransaction=await submitContent(umi,{
+                aiModelUsed:publicKey(aiModel.aiModelPublicKey),
+                creator:ctx.user.wallet,
+                contentAccount:contentAccount,
+                systemProgram:publicKey(SYSTEM_PROGRAM_ADDRESS)
+
+            },{
+                aiModelRoyalty:aiModel.royaltyPercentage,
+                aiModelUsed:publicKey(aiModel.aiModelPublicKey),
+                contentIpfs:contentUri,
+                contentType:contentTypeId,
+                id:id,
+                metadataIpfs:metadataUri,
+                prompt:input.prompt
+            })
 
             const content=await prismaClient.content.create({
                 data:{

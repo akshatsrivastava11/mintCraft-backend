@@ -60,7 +60,6 @@ export const aiModelRouter=router({
                             code: 'NOT_FOUND',      
                         })
                     }
-                   const aiModelAccount=generateSigner(umi);
                    const transactionBuilder=registerAiModel(umi,{
                     name:input.name,
                     description:input.description,
