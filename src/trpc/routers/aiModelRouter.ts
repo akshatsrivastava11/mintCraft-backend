@@ -77,7 +77,7 @@ export const aiModelRouter=router({
                     
                     const pendingTransaction=await prismaClient.pendingAIModelRegistration.create({
                           data: {
-                        userId: ctx.user.id,
+                        ownerId: ctx.user.id,
                         name: input.name,
                         description: input.description,
                         apiEndpoint: input.apiEndpoint,
@@ -134,7 +134,7 @@ export const aiModelRouter=router({
             const pendingRegistration=await prismaClient.pendingAIModelRegistration.findUnique({
                 where:{
                     id: input.pendingRegistrationId,
-                    userId: ctx.user.id
+                    ownerId: ctx.user.id
                 }
             })
             if (!pendingRegistration) {

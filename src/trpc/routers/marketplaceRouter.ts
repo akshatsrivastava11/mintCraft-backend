@@ -6,14 +6,17 @@ import { publicKey } from '@metaplex-foundation/umi'
 import { PublicKey, SystemProgram } from '@solana/web3.js'
 import {findAssociatedTokenPda} from '@metaplex-foundation/mpl-toolbox'
 import { TOKEN_PROGRAM_ADDRESS } from 'gill/programs'
+import { PrismaClient } from '../../database/generated/prisma'
 const umi=createUmi("https://")
+const prismaClient=new PrismaClient()
 export const marketplaceRouter=router({
-    listNft:procedures.input(z.object({})).mutation(async({input,ctx})=>{
+    listNft:procedures.input(z.object({
+        nft_mint:z.string(),
+        price:z.number().positive(),
+        marketplaceId:z.number()
+    })).mutation(async({input,ctx})=>{
     try {
-        if (!ctx.user) {
-            throw new Error("User not authenticated");
-            
-        }
+
         const marketplace=umi.eddsa.findPda(
             MINT_CRAFT_MARKETPLACE_PROGRAM_ID,
             [Buffer.from("marketplace")]
@@ -35,15 +38,26 @@ export const marketplaceRouter=router({
         const userMintAta=findAssociatedTokenPda(
             umi,
             {
-                mint:publicKey("nftmint"),,
+                mint:publicKey(input.nft_mint),
                 owner:ctx.user.wallet,
                 tokenProgramId:publicKey(TOKEN_PROGRAM_ADDRESS)
             }
         )
+        const nft=await prismaClient.nFT.findUnique(
+         {
+            where:{
+                mintAddress:input.nft_mint
+            }
+         }   
+        )
+        if(!nft){
+            throw new Error("NFT not found");
+        }
+        
         const vaultMint=findAssociatedTokenPda(
             umi,
             {
-                mint:publicKey("nftmint"),
+                mint:publicKey(input.nft_mint),
                 owner:publicKey(listing),
                 tokenProgramId:publicKey(TOKEN_PROGRAM_ADDRESS)
             }
@@ -51,7 +65,7 @@ export const marketplaceRouter=router({
         
         const transactionBuilder=await list(umi,{
             maker:ctx.user.wallet,
-            mint:publicKey("nftmint"),
+            mint:publicKey(input.nft_mint),
             price:input.price,
             associatedTokenProgram:publicKey("associatedTokenProgram"),
             listing,
@@ -62,11 +76,77 @@ export const marketplaceRouter=router({
         userMintAta,
         vaultMint
         })
+        const transaction=await transactionBuilder.buildAndSign(umi)
+        const serializedTransaction=umi.transactions.serialize(transaction)
+        const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+
+        const pendingList=await prismaClient.pendingListing.create({
+            data:{
+                nftId:nft.id,
+                expiresAt:new Date(Date.now() + 24 * 60 * 60 * 1000),
+                price:input.price,
+                serializedTransaction:Buffer.from(serializedTransaction).toString('base64'),
+                createdAt:new Date(),
+                sellerId:ctx.user.id,
+                id:id,
+                marketplaceId:input.marketplaceId,
+
+            }
+        })
+
+        return{
+                          success: true,
+                    message: "Transaction created successfully. Please sign with your wallet.",
+                    serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
+                    pendingListId:pendingList.id
+                    }
     
     } catch (error) {
         console.log("An error occured in the listing process:", error);
         throw new Error("Failed to list NFT");
     }
+    }),
+    confirmListing:procedures.input(z.object({
+        transactionSignature: z.string(),
+        pendingListId: z.number(),
+    })
+    ).mutation(async({input,ctx})=>{
+        try {
+        if (!ctx.user) {
+            throw new Error("User not authenticated");    
+        }
+
+        const pendingList=await prismaClient.pendingListing.findUnique({
+            where:{id:input.pendingListId}
+        })
+        if(!pendingList){
+            throw new Error("Pending listing not found");
+        }
+        if(pendingList.sellerId!==ctx.user.id){
+            throw new Error("You are not the seller of this listing");
+        }
+        const listing=await prismaClient.listing.create({
+            data:{
+                price:pendingList.price,
+                nftId:pendingList.nftId,
+                sellerId:pendingList.sellerId,
+                createdAt:pendingList.createdAt,
+                id:pendingList.id,
+                marketplaceId:pendingList.marketplaceId,
+                isActive:true,
+            }
+        })
+        return {
+            success: true,
+            message: "Listing created successfully",
+            listingId:listing.id
+        }
+
+
+        } catch (error) {
+            console.log("An error occurred while confirming listing:", error);
+            throw new Error("Failed to confirm listing");
+        }
     }),
     buyNft:procedures.input(z.object({})).mutation(async({input,ctx})=>{}),
     getListings:procedures.input(z.object({})).query(async(ctx)=>{}),
