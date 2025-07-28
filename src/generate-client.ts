@@ -2,14 +2,15 @@ import { AnchorIdl, rootNodeFromAnchorWithoutDefaultVisitor } from "@codama/node
 import { renderJavaScriptUmiVisitor, renderJavaScriptVisitor, renderRustVisitor } from "@codama/renderers";
 import { visit } from "@codama/visitors-core";
 // import anchorIdl from "../src/idl/mint_craft_model_registry.json"; // Note: if you initiated your project with a different name, you may need to change this path
-import anchorIdl from '../src/idl/mint-craft-nft-program.json'
+// import anchorIdl from '../src/idl/mint-craft-nft-program.json'
+import anchorIdl from '../src/idl/mint_craft_marketplace.json'
 async function generateClients() {
     const node = rootNodeFromAnchorWithoutDefaultVisitor(anchorIdl as AnchorIdl);
 
     const clients = [
-        { type: "JS", dir: "clients/nftProgram/js/src", renderVisitor: renderJavaScriptVisitor },
-        { type: "Umi", dir: "clients/nftProgram/umi/src", renderVisitor: renderJavaScriptUmiVisitor },
-        { type: "Rust", dir: "clients/nftProgram/rust/src", renderVisitor: renderRustVisitor }
+        { type: "JS", dir: "clients/marketplaceProgram/js/src", renderVisitor: renderJavaScriptVisitor },
+        { type: "Umi", dir: "clients/marketplaceProgram/umi/src", renderVisitor: renderJavaScriptUmiVisitor },
+        { type: "Rust", dir: "clients/marketplaceProgram/rust/src", renderVisitor: renderRustVisitor }
     ];
 
     for (const client of clients) {
