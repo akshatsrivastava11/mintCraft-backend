@@ -5,23 +5,33 @@ import {PrismaClient} from '../../database/generated/prisma'
 import { RegisterAIModelSchema } from '../schemas/registerAIModelSchema'
 import {registerAiModel,MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID} from '../../../clients/generated/umi/src'
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults'
-import { generateSigner, publicKey } from '@metaplex-foundation/umi'
-import { PublicKey, SystemProgram } from '@solana/web3.js'
+import { createSignerFromKeypair, generateSigner, publicKey, signerIdentity } from '@metaplex-foundation/umi'
+import { Keypair, PublicKey, SystemProgram } from '@solana/web3.js'
 import { uuid } from 'zod'
 // import {} from 'gill/programs'
 // import { generateKeyPair } from 'gill/programs'
 import { getUserConfig } from '../../config/aiModelConfigs'
+import { getKeypairFromFile } from '@solana-developers/helpers'
 const prismaClient=new PrismaClient()
-const umi=createUmi("https://api.devnet.solana.com");
+const umi=createUmi("http://127.0.0.1:8899");
+let wallet:Keypair;
+ getKeypairFromFile().then((data)=>{
+    wallet=data
+    const keypair=umi.eddsa.createKeypairFromSecretKey(wallet.secretKey);
+    const signer=createSignerFromKeypair(umi,keypair)
+    umi.use(signerIdentity(signer));
+ })
 export const aiModelRouter=router({
     //register a new Ai Model
     //done
     initializeUserConfig:procedures.mutation(async({ctx})=>{
+        console.log("wallet",ctx.wallet)
+        console.log(typeof ctx.wallet)
         const serializedTransaction=await getUserConfig(ctx.wallet);
         return {
             success: true,
             message: "User config initialized successfully",
-            serializedTransaction: Buffer.from(serializedTransaction).toString('base64')        
+            serializedTransaction: Buffer.from(serializedTransaction).toString('base64')      
     }}),
     //done
     register:procedures.input(RegisterAIModelSchema)
@@ -38,29 +48,31 @@ export const aiModelRouter=router({
                     //         message: 'You must be logged in to register an AI Model.'
                     //     })
                     // }
+                    let userPubkey=new PublicKey(ctx.wallet)
                     console.log("register")
                     const globalStatePda=await PublicKey.findProgramAddressSync(
                         [Buffer.from("global_state")],
                         new PublicKey(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID)
                     )[0]
                     const aiModelPda=umi.eddsa.findPda(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
-                        [Buffer.from("ai"), Buffer.from(input.name), ctx.wallet.toBuffer(), globalStatePda.toBuffer()],
+                        [Buffer.from("ai"), Buffer.from(input.name), userPubkey.toBuffer(), globalStatePda.toBuffer()],
                     )
                     const globalState=umi.eddsa.findPda(
                         MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
                         [Buffer.from("global_state")],
                     )
-                    const id=Number(uuid().length(14))
+const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
                     //sends the transaction 
                     const userConfig=umi.eddsa.findPda(
                         MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
-                        [Buffer.from("user_config"), ctx.wallet.toBuffer()]
+                        [Buffer.from("user_config"), userPubkey.toBuffer()]
                     )
                     if (!userConfig) {
                         throw new TRPCError({
                             code: 'NOT_FOUND',      
                         })
                     }
+                    console.log(userConfig,globalState)
                    const transactionBuilder=registerAiModel(umi,{
                     name:input.name,
                     description:input.description,
@@ -75,9 +87,10 @@ export const aiModelRouter=router({
                     })
                     const transaction =await transactionBuilder.buildAndSign(umi)
                     const serializedTransaction=umi.transactions.serialize(transaction);
+                    console.log("serailized transaction",serializedTransaction)
                     const user=await prismaClient.user.findUnique({
                         where: {
-                            wallet: ctx.wallet.toString()
+                            wallet: userPubkey.toString()
                         }
                     })
                     if(!user){

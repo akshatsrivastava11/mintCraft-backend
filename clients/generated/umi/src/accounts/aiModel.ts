@@ -155,7 +155,7 @@ export function getAiModelGpaBuilder(
 ) {
   const programId = context.programs.getPublicKey(
     'mintCraftModelRegistry',
-    '3WbdiK5An2Q5GfqQAZQ2qstSukqqMiiZy8tfydS3TvHf'
+    '6pKDeeU6C4t2i6C9FnTfgiFKQM5EhNbyZNJ2jwU2DuPw'
   );
   return gpaBuilder(context, programId)
     .registerFields<{

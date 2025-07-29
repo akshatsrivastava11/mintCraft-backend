@@ -20,6 +20,7 @@ export const authRouter=router({
                         nfts:true
                     }
                 })
+                console.log(user)
                 if (!user){
                     user=await prismaClient.user.create({
                         data:{

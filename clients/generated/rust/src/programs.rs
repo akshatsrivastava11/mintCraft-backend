@@ -9,5 +9,5 @@ use solana_pubkey::{pubkey, Pubkey};
 
 
   /// `mint_craft_model_registry` program ID.
-  pub const MINT_CRAFT_MODEL_REGISTRY_ID: Pubkey = pubkey!("3WbdiK5An2Q5GfqQAZQ2qstSukqqMiiZy8tfydS3TvHf");
+  pub const MINT_CRAFT_MODEL_REGISTRY_ID: Pubkey = pubkey!("6pKDeeU6C4t2i6C9FnTfgiFKQM5EhNbyZNJ2jwU2DuPw");
 

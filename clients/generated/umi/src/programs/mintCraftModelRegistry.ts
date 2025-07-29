@@ -18,7 +18,7 @@ import {
 } from '../errors';
 
 export const MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID =
-  '3WbdiK5An2Q5GfqQAZQ2qstSukqqMiiZy8tfydS3TvHf' as PublicKey<'3WbdiK5An2Q5GfqQAZQ2qstSukqqMiiZy8tfydS3TvHf'>;
+  '6pKDeeU6C4t2i6C9FnTfgiFKQM5EhNbyZNJ2jwU2DuPw' as PublicKey<'6pKDeeU6C4t2i6C9FnTfgiFKQM5EhNbyZNJ2jwU2DuPw'>;
 
 export function createMintCraftModelRegistryProgram(): Program {
   return {
