@@ -8,7 +8,8 @@ import { createUmi } from '@metaplex-foundation/umi-bundle-defaults'
 import { generateSigner, publicKey } from '@metaplex-foundation/umi'
 import { PublicKey, SystemProgram } from '@solana/web3.js'
 import { uuid } from 'zod'
-import { generateKeyPair } from 'gill'
+// import {} from 'gill/programs'
+// import { generateKeyPair } from 'gill/programs'
 import { getUserConfig } from '../../config/aiModelConfigs'
 const prismaClient=new PrismaClient()
 const umi=createUmi("https://api.devnet.solana.com");
@@ -16,7 +17,7 @@ export const aiModelRouter=router({
     //register a new Ai Model
     //done
     initializeUserConfig:procedures.mutation(async({ctx})=>{
-        const serializedTransaction=await getUserConfig(ctx.user.wallet);
+        const serializedTransaction=await getUserConfig(ctx.wallet);
         return {
             success: true,
             message: "User config initialized successfully",
@@ -26,24 +27,24 @@ export const aiModelRouter=router({
     register:procedures.input(RegisterAIModelSchema)
             .mutation(async({input,ctx})=>{
                 try {
-                    if(!ctx.user){
-                        throw new TRPCError({
-                            code: 'UNAUTHORIZED',
-                            message: 'You must be logged in to register an AI Model.'
-                        })
-                    }
-                    if(input.aiModelPublicKey==undefined){
-                        throw new TRPCError({
-                            code: 'BAD_REQUEST',
-                            message: 'AI Model Public Key is required.'
-                        })
-                    }
+                    console.log("triggered")
+                    // if(!ctx.user){
+                    //     return {
+                    //         success: false,
+                    //         message: "You must be logged in to register an AI Model."
+                    //     }
+                    //     throw new TRPCError({
+                    //         code: 'UNAUTHORIZED',
+                    //         message: 'You must be logged in to register an AI Model.'
+                    //     })
+                    // }
+                    console.log("register")
                     const globalStatePda=await PublicKey.findProgramAddressSync(
                         [Buffer.from("global_state")],
                         new PublicKey(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID)
                     )[0]
                     const aiModelPda=umi.eddsa.findPda(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
-                        [Buffer.from("ai"), Buffer.from(input.name), ctx.user.wallet.toBuffer(), globalStatePda.toBuffer()],
+                        [Buffer.from("ai"), Buffer.from(input.name), ctx.wallet.toBuffer(), globalStatePda.toBuffer()],
                     )
                     const globalState=umi.eddsa.findPda(
                         MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
@@ -53,7 +54,7 @@ export const aiModelRouter=router({
                     //sends the transaction 
                     const userConfig=umi.eddsa.findPda(
                         MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
-                        [Buffer.from("user_config"), ctx.user.wallet.toBuffer()]
+                        [Buffer.from("user_config"), ctx.wallet.toBuffer()]
                     )
                     if (!userConfig) {
                         throw new TRPCError({
@@ -66,7 +67,7 @@ export const aiModelRouter=router({
                     apiEndpoint:input.apiEndpoint,
                     royaltyPercentage:input.royaltyPerGeneration,
                     aiModel:aiModelPda,
-                    signer:ctx.user.wallet,
+                    signer:ctx.wallet,
                     id:id,
                     globalState:globalState,
                     systemProgram:publicKey(SystemProgram.programId),
@@ -74,10 +75,19 @@ export const aiModelRouter=router({
                     })
                     const transaction =await transactionBuilder.buildAndSign(umi)
                     const serializedTransaction=umi.transactions.serialize(transaction);
-                    
+                    const user=await prismaClient.user.findUnique({
+                        where: {
+                            wallet: ctx.wallet.toString()
+                        }
+                    })
+                    if(!user){
+                        throw new TRPCError({
+                            code: 'NOT_FOUND',      
+                        })
+                    }
                     const pendingTransaction=await prismaClient.pendingAIModelRegistration.create({
                           data: {
-                        ownerId: ctx.user.id,
+                        ownerId: user.id,
                         name: input.name,
                         description: input.description,
                         apiEndpoint: input.apiEndpoint,
@@ -125,16 +135,21 @@ export const aiModelRouter=router({
         pendingRegistrationId: z.number(),
     })).mutation(async({input,ctx})=>{
         try {
-            if (!ctx.user) {
-                throw new TRPCError({
-                    code: 'UNAUTHORIZED',
-                    message: 'You must be logged in to confirm AI Model registration.'
-                });
-            }
+                      const user=await prismaClient.user.findUnique({
+                        where: {
+                            wallet: ctx.wallet.toString()
+                        }
+                    })
+                    if(!user){
+                        throw new TRPCError({
+                            code: 'NOT_FOUND',      
+                        })
+                    }
+            
             const pendingRegistration=await prismaClient.pendingAIModelRegistration.findUnique({
                 where:{
                     id: input.pendingRegistrationId,
-                    ownerId: ctx.user.id
+                    ownerId: user.id
                 }
             })
             if (!pendingRegistration) {
@@ -145,7 +160,7 @@ export const aiModelRouter=router({
             }
                 const aiModel = await prismaClient.aIModel.create({
                 data: {
-                    ownerId: ctx.user.id,
+                    ownerId: user.id,
                     name: pendingRegistration.name,
                     description: pendingRegistration.description,
                     apiEndpoint: pendingRegistration.apiEndpoint,
@@ -201,17 +216,23 @@ export const aiModelRouter=router({
     //getMyModels
     getMyModels:procedures.query(async({ctx})=>{
         try {
-            if (!ctx.user){
-                throw new TRPCError({
-                    code: 'UNAUTHORIZED',
-                    message: 'You must be logged in to view your AI Models.'
-                });
-            }
+             const user=await prismaClient.user.findUnique({
+                        where: {
+                            wallet: ctx.wallet.toString()
+                        }
+                    })
+                    if(!user){
+                        throw new TRPCError({
+                            code: 'NOT_FOUND',      
+                        })
+                    }
             const whereClause={
-                owner:ctx.user.id
+                owner:user.id
             }
             const models=await prismaClient.aIModel.findMany({
-                where:whereClause
+                where:{
+                    ownerId:user.id
+                }
             });
             return models
             

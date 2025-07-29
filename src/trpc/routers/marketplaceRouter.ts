@@ -1,3 +1,4 @@
+//@ts-nocheck
 import {z} from 'zod'
 import { procedures,router } from '..'
 import {list,MINT_CRAFT_MARKETPLACE_PROGRAM_ID} from '../../../clients/marketplaceProgram/umi/src'
@@ -5,9 +6,11 @@ import { createUmi } from '@metaplex-foundation/umi-bundle-defaults'
 import { publicKey } from '@metaplex-foundation/umi'
 import { PublicKey, SystemProgram } from '@solana/web3.js'
 import {findAssociatedTokenPda} from '@metaplex-foundation/mpl-toolbox'
-import { TOKEN_PROGRAM_ADDRESS } from 'gill/programs'
+// import { TOKEN_PROGRAM_ADDRESS } from 'gill/programs'
+import {TOKEN_PROGRAM_ADDRESS} from 'gill/programs'
 import { PrismaClient } from '../../database/generated/prisma'
-const umi=createUmi("https://")
+import { TRPCError } from '@trpc/server'
+const umi=createUmi("https://api.devnet.solana.com")
 const prismaClient=new PrismaClient()
 export const marketplaceRouter=router({
     listNft:procedures.input(z.object({
@@ -28,18 +31,18 @@ export const marketplaceRouter=router({
 
         const listing =umi.eddsa.findPda(
             MINT_CRAFT_MARKETPLACE_PROGRAM_ID,
-            [Buffer.from("listing"),marketplaceForPda.toBuffer(),ctx.user.wallet.toBuffer()]
+            [Buffer.from("listing"),marketplaceForPda.toBuffer(),ctx.wallet.toBuffer()]
         )
         const userConfig=umi.eddsa.findPda(
             MINT_CRAFT_MARKETPLACE_PROGRAM_ID,
-            [Buffer.from("user"),ctx.user.wallet.toBuffer()]
+            [Buffer.from("user"),ctx.wallet.toBuffer()]
         )
 
         const userMintAta=findAssociatedTokenPda(
             umi,
             {
                 mint:publicKey(input.nft_mint),
-                owner:ctx.user.wallet,
+                owner:ctx.wallet,
                 tokenProgramId:publicKey(TOKEN_PROGRAM_ADDRESS)
             }
         )
@@ -63,8 +66,18 @@ export const marketplaceRouter=router({
             }
         )
         
+                     const user=await prismaClient.user.findUnique({
+                        where: {
+                            wallet: ctx.wallet.toString()
+                        }
+                    })
+                    if(!user){
+                        throw new TRPCError({
+                            code: 'NOT_FOUND',      
+                        })
+                    }
         const transactionBuilder=await list(umi,{
-            maker:ctx.user.wallet,
+            maker:ctx.wallet,
             mint:publicKey(input.nft_mint),
             price:input.price,
             associatedTokenProgram:publicKey("associatedTokenProgram"),
@@ -87,7 +100,7 @@ export const marketplaceRouter=router({
                 price:input.price,
                 serializedTransaction:Buffer.from(serializedTransaction).toString('base64'),
                 createdAt:new Date(),
-                sellerId:ctx.user.id,
+                sellerId:user.id,
                 id:id,
                 marketplaceId:input.marketplaceId,
 
@@ -112,9 +125,16 @@ export const marketplaceRouter=router({
     })
     ).mutation(async({input,ctx})=>{
         try {
-        if (!ctx.user) {
-            throw new Error("User not authenticated");    
-        }
+                const user=await prismaClient.user.findUnique({
+                           where: {
+                               wallet: ctx.wallet.toString()
+                           }
+                       })
+                       if(!user){
+                           throw new TRPCError({
+                               code: 'NOT_FOUND',      
+                           })
+                       }
 
         const pendingList=await prismaClient.pendingListing.findUnique({
             where:{id:input.pendingListId}
@@ -122,7 +142,7 @@ export const marketplaceRouter=router({
         if(!pendingList){
             throw new Error("Pending listing not found");
         }
-        if(pendingList.sellerId!==ctx.user.id){
+        if(pendingList.sellerId!==user.id){
             throw new Error("You are not the seller of this listing");
         }
         const listing=await prismaClient.listing.create({

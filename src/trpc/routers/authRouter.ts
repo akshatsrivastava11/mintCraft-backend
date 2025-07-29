@@ -1,6 +1,7 @@
 import {procedures, router} from '..'
 import {z} from 'zod'
 import { PrismaClient } from '../../database/generated/prisma'
+import { TRPCError } from '@trpc/server'
 const prismaClient=new PrismaClient()
 export const authRouter=router({
 
@@ -44,12 +45,19 @@ export const authRouter=router({
         }),
     getProfile:procedures.query(async({ctx})=>{
         try {
-            if(!ctx.user){
-                throw new Error("User not authenticated");
-            }
-            const user=await prismaClient.user.findUnique({
+          const user=await prismaClient.user.findUnique({
+                        where: {
+                            wallet: ctx.wallet.toString()
+                        }
+                    })
+                    if(!user){
+                        throw new TRPCError({
+                            code: 'NOT_FOUND',      
+                        })
+                    }
+            const userfound=await prismaClient.user.findUnique({
                 where:{
-                    id:ctx.user.id
+                    id:user.id
                 },
                 include:{
                     aiModels:true,

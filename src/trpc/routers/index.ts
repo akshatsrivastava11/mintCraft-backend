@@ -4,7 +4,7 @@ import { authRouter } from "./authRouter";
 import { contentRouter } from "./contentRouter";
 import { marketplaceRouter } from "./marketplaceRouter";
 
-const approuter=router({
+export const approuter=router({
     aiModelRouter,
     authRouter,
     contentRouter,
