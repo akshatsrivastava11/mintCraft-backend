@@ -1,105 +1,171 @@
-import {z} from 'zod'
+import { z } from 'zod'
 import { procedures, router } from '..'
 import { TRPCError } from '@trpc/server'
-import {PrismaClient} from '../../database/generated/prisma'
+import { PrismaClient } from '../../database/generated/prisma'
 import { RegisterAIModelSchema } from '../schemas/registerAIModelSchema'
-import {registerAiModel,MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID} from '../../../clients/generated/umi/src'
-import { createUmi } from '@metaplex-foundation/umi-bundle-defaults'
-import { createSignerFromKeypair, generateSigner, publicKey, signerIdentity } from '@metaplex-foundation/umi'
-import { Keypair, PublicKey, SystemProgram } from '@solana/web3.js'
+// import {registerAiModel,MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID} from '../../../clients/generated/umi/src'
+import * as aIModelProgramClient from '../../../clients/generated/js/src'
+// import { createUmi } from '@metaplex-foundation/umi-bundle-defaults'
+// import { createSignerFromKeypair, generateSigner, publicKey, signerIdentity } from '@metaplex-foundation/umi'
+import { AccountMeta, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js'
 import { uuid } from 'zod'
-// import {} from 'gill/programs'
+import { AccountRole, createTransaction } from 'gill'
 // import { generateKeyPair } from 'gill/programs'
 import { getUserConfig } from '../../config/aiModelConfigs'
 import { getKeypairFromFile } from '@solana-developers/helpers'
-const prismaClient=new PrismaClient()
-const umi=createUmi("http://127.0.0.1:8899");
-let wallet:Keypair;
- getKeypairFromFile().then((data)=>{
-    wallet=data
-    const keypair=umi.eddsa.createKeypairFromSecretKey(wallet.secretKey);
-    const signer=createSignerFromKeypair(umi,keypair)
-    umi.use(signerIdentity(signer));
- })
-export const aiModelRouter=router({
+import { address, createSolanaRpc } from 'gill'
+import { MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID } from '../../../clients/generated/umi/src'
+const prismaClient = new PrismaClient()
+const rpc = createSolanaRpc("http://127.0.0.1:8899")
+// aIModelProgramClient.getRegisterAiModelInstruction({})
+// const umi=createUmi("http://127.0.0.1:8899");
+// let wallet:Keypair;
+//  getKeypairFromFile().then((data)=>{
+//     wallet=data
+//     const keypair=umi.eddsa.createKeypairFromSecretKey(wallet.secretKey);
+//     const signer=createSignerFromKeypair(umi,keypair)
+//     umi.use(signerIdentity(signer));
+//  })
+// const roleToMeta = (account: any): AccountMeta => {
+//     // console.log("account",account)
+//   const pubkey = new PublicKey(account.address.toString());
+//   const role = account.role;
+
+//     return {
+//     pubkey,
+//     isSigner: account.role === AccountRole.WRITABLE_SIGNER || account.role === AccountRole.READONLY_SIGNER,
+//     isWritable: account.role === AccountRole.WRITABLE_SIGNER || account.role === AccountRole.WRITABLE,
+//   };
+// };
+export const aiModelRouter = router({
     //register a new Ai Model
     //done
-    initializeUserConfig:procedures.mutation(async({ctx})=>{
-        console.log("wallet",ctx.wallet)
+    initializeUserConfig: procedures.mutation(async ({ ctx }) => {
+        console.log("wallet", ctx.wallet)
         console.log(typeof ctx.wallet)
-        const serializedTransaction=await getUserConfig(ctx.wallet);
+        const serializedTransaction = await getUserConfig(ctx.wallet);
         return {
             success: true,
             message: "User config initialized successfully",
-            serializedTransaction: Buffer.from(serializedTransaction).toString('base64')      
-    }}),
+            serializedTransaction: Buffer.from(serializedTransaction).toString('base64')
+        }
+    }),
     //done
-    register:procedures.input(RegisterAIModelSchema)
-            .mutation(async({input,ctx})=>{
-                try {
-                    console.log("triggered")
-                    // if(!ctx.user){
-                    //     return {
-                    //         success: false,
-                    //         message: "You must be logged in to register an AI Model."
-                    //     }
-                    //     throw new TRPCError({
-                    //         code: 'UNAUTHORIZED',
-                    //         message: 'You must be logged in to register an AI Model.'
-                    //     })
-                    // }
-                    let userPubkey=new PublicKey(ctx.wallet)
-                    console.log("register")
-                    const globalStatePda=await PublicKey.findProgramAddressSync(
-                        [Buffer.from("global_state")],
-                        new PublicKey(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID)
-                    )[0]
-                    const aiModelPda=umi.eddsa.findPda(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
-                        [Buffer.from("ai"), Buffer.from(input.name), userPubkey.toBuffer(), globalStatePda.toBuffer()],
-                    )
-                    const globalState=umi.eddsa.findPda(
-                        MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
-                        [Buffer.from("global_state")],
-                    )
-const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
-                    //sends the transaction 
-                    const userConfig=umi.eddsa.findPda(
-                        MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
-                        [Buffer.from("user_config"), userPubkey.toBuffer()]
-                    )
-                    if (!userConfig) {
-                        throw new TRPCError({
-                            code: 'NOT_FOUND',      
-                        })
-                    }
-                    console.log(userConfig,globalState)
-                   const transactionBuilder=registerAiModel(umi,{
-                    name:input.name,
-                    description:input.description,
-                    apiEndpoint:input.apiEndpoint,
-                    royaltyPercentage:input.royaltyPerGeneration,
-                    aiModel:aiModelPda,
-                    signer:ctx.wallet,
-                    id:id,
-                    globalState:globalState,
-                    systemProgram:publicKey(SystemProgram.programId),
-                    userConfig:userConfig,
+    register: procedures.input(RegisterAIModelSchema)
+        .mutation(async ({ input, ctx }) => {
+            try {
+                console.log("triggered")
+                // if(!ctx.user){
+                //     return {
+                //         success: false,
+                //         message: "You must be logged in to register an AI Model."
+                //     }
+                //     throw new TRPCError({
+                //         code: 'UNAUTHORIZED',
+                //         message: 'You must be logged in to register an AI Model.'
+                //     })
+                // }
+                let userPubkey = new PublicKey(ctx.wallet)
+                console.log("register")
+                const globalStatePda = await PublicKey.findProgramAddressSync(
+                    [Buffer.from("global_state")],
+                    new PublicKey(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID)
+                )[0]
+                const aiModelPda = await PublicKey.findProgramAddressSync(
+                    [Buffer.from("ai"), Buffer.from(input.name), userPubkey.toBuffer(), globalStatePda.toBuffer()],
+                    new PublicKey(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID)
+                )[0]
+                // const aiModelPda=umi.eddsa.findPda(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
+                //     [Buffer.from("ai"), Buffer.from(input.name), userPubkey.toBuffer(), globalStatePda.toBuffer()],
+                // )
+
+                // const globalState=umi.eddsa.findPda(
+                //     MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
+                //     [Buffer.from("global_state")],
+                // )
+                const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+                //sends the transaction 
+                // const userConfig=umi.eddsa.findPda(
+                //     MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
+                //     [Buffer.from("user_config"), userPubkey.toBuffer()]
+                // )
+                const userConfig = await PublicKey.findProgramAddressSync(
+                    [Buffer.from("user_config"), userPubkey.toBuffer()],
+                    new PublicKey(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID)
+                )[0]
+                if (!userConfig) {
+                    throw new TRPCError({
+                        code: 'NOT_FOUND',
                     })
-                    const transaction =await transactionBuilder.buildAndSign(umi)
-                    const serializedTransaction=umi.transactions.serialize(transaction);
-                    console.log("serailized transaction",serializedTransaction)
-                    const user=await prismaClient.user.findUnique({
-                        where: {
-                            wallet: userPubkey.toString()
-                        }
-                    })
-                    if(!user){
-                        throw new TRPCError({
-                            code: 'NOT_FOUND',      
-                        })
+                }
+                // console.log(userConfig,globalState)
+                const transactionIx = aIModelProgramClient.getRegisterAiModelInstruction({
+                    name: input.name,
+                    aiModel: address(aiModelPda.toString()),
+                    signer: ctx.wallet,
+                    id: id,
+                    globalState: address(globalStatePda.toString()),
+                    apiEndpoint: input.apiEndpoint,
+                    description: input.description,
+                    royaltyPercentage: input.royaltyPerGeneration,
+                    userConfig: address(userConfig.toString()),
+                    systemProgram: address(SystemProgram.programId.toString())
+                }, {
+                    programAddress: address(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID)
+                })
+                console.log("transactionIx is ", transactionIx)
+                // transactionIx.accounts[0].signer
+                const keys: AccountMeta[] = (transactionIx.accounts).map((account) => {
+                    return {
+                        pubkey:new PublicKey(account.address),
+                        isSigner: account.address.toString()==ctx.wallet.toString(),
+                        isWritable: account.role === AccountRole.WRITABLE_SIGNER || account.role === AccountRole.WRITABLE,
+                    };
+
+                });
+                console.log("keys is ",keys)
+                const convertedIx = new TransactionInstruction({
+                    keys: keys,
+                    programId: new PublicKey(transactionIx.programAddress),
+                    data: Buffer.from(transactionIx.data), // Ensure it's a Buffer/Uint8Array
+                });
+                console.log("convertedIx", convertedIx)
+                const recentBlockhash = await (await rpc.getLatestBlockhash()).send().then((data) => {
+                    return data.value.blockhash.toString()
+                });
+                const Tx = new Transaction({
+                    feePayer: new PublicKey(ctx.wallet),
+                    recentBlockhash: recentBlockhash
+                }).add(convertedIx)
+                // Tx.partialSign()
+                const serializedTransaction = Tx.serialize({requireAllSignatures:false})
+                //    const transactionBuilder=registerAiModel(umi,{
+                //     name:input.name,
+                //     description:input.description,
+                //     apiEndpoint:input.apiEndpoint,
+                //     royaltyPercentage:input.royaltyPerGeneration,
+                //     aiModel:aiModelPda,
+                //     signer:ctx.wallet,
+                //     id:id,
+                //     globalState:globalState,
+                //     systemProgram:publicKey(SystemProgram.programId),
+                //     userConfig:userConfig,
+                //     })
+                // const transaction =await transactionBuilder.buildAndSign(umi)
+                // const serializedTransaction=umi.transactions.serialize(transaction);
+                console.log("serailized transaction", serializedTransaction)
+                const user = await prismaClient.user.findUnique({
+                    where: {
+                        wallet: userPubkey.toString()
                     }
-                    const pendingTransaction=await prismaClient.pendingAIModelRegistration.create({
-                          data: {
+                })
+                if (!user) {
+                    throw new TRPCError({
+                        code: 'NOT_FOUND',
+                    })
+                }
+                const pendingTransaction = await prismaClient.pendingAIModelRegistration.create({
+                    data: {
                         ownerId: user.id,
                         name: input.name,
                         description: input.description,
@@ -109,26 +175,27 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
                         modelId: id,
                         serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
                         createdAt: new Date(),
-                        expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes expiry
+                        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiry
+                        headersJSONstring: input.headersJSONstring
                     }
-                    })
+                })
 
-                    return {
-                          success: true,
+                return {
+                    success: true,
                     message: "Transaction created successfully. Please sign with your wallet.",
                     serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
                     aiModelPublicKey: aiModelPda.toString(),
                     pendingRegistrationId: pendingTransaction.id,
                     modelId: id
-                    }
-
-                } catch (error) {
-                    console.log("An error occurred while registering AI Model:", error);
-                    throw new Error("Failed to register AI Model");
                 }
-          }),
-    getAll:procedures.query(async (ctx)=>{
-        const aiModels=await prismaClient.aIModel.findMany({
+
+            } catch (error) {
+                console.log("An error occurred while registering AI Model:", error);
+                throw new Error("Failed to register AI Model");
+            }
+        }),
+    getAll: procedures.query(async (ctx) => {
+        const aiModels = await prismaClient.aIModel.findMany({
             where: {
                 isActive: true
             },
@@ -143,24 +210,24 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
         });
         return aiModels;
     }),
-    confirmRegistration:procedures.input(z.object({
+    confirmRegistration: procedures.input(z.object({
         transactionSignature: z.string(),
         pendingRegistrationId: z.number(),
-    })).mutation(async({input,ctx})=>{
+    })).mutation(async ({ input, ctx }) => {
         try {
-                      const user=await prismaClient.user.findUnique({
-                        where: {
-                            wallet: ctx.wallet.toString()
-                        }
-                    })
-                    if(!user){
-                        throw new TRPCError({
-                            code: 'NOT_FOUND',      
-                        })
-                    }
-            
-            const pendingRegistration=await prismaClient.pendingAIModelRegistration.findUnique({
-                where:{
+            const user = await prismaClient.user.findUnique({
+                where: {
+                    wallet: ctx.wallet.toString()
+                }
+            })
+            if (!user) {
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                })
+            }
+
+            const pendingRegistration = await prismaClient.pendingAIModelRegistration.findUnique({
+                where: {
                     id: input.pendingRegistrationId,
                     ownerId: user.id
                 }
@@ -171,7 +238,7 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
                     message: 'Pending AI Model registration not found or does not belong to the user.'
                 });
             }
-                const aiModel = await prismaClient.aIModel.create({
+            const aiModel = await prismaClient.aIModel.create({
                 data: {
                     ownerId: user.id,
                     name: pendingRegistration.name,
@@ -180,7 +247,10 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
                     royaltyPercentage: pendingRegistration.royaltyPercentage,
                     isActive: true,
                     aiModelPublicKey: pendingRegistration.aiModelPublicKey,
-                    },
+                    headersJSONstring: pendingRegistration.headersJSONstring,
+                    createdAt: new Date(),
+                    id: pendingRegistration.id
+                },
                 include: {
                     owner: {
                         select: {
@@ -195,26 +265,26 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
                     id: input.pendingRegistrationId
                 }
             });
-                    return {
+            return {
                 success: true,
                 message: "AI Model registered successfully",
                 aiModel: aiModel
             }
 
-      
+
         } catch (error) {
-            console.log("An error occurred while confirming AI Model registration:", error);    
+            console.log("An error occurred while confirming AI Model registration:", error);
             throw new Error("Failed to confirm AI Model registration");
         }
     }),
-    getById:procedures.input(z.object({id:z.number()})).query(async({input})=>{
+    getById: procedures.input(z.object({ id: z.number() })).query(async ({ input }) => {
         try {
-            const aiModel=await prismaClient.aIModel.findUnique({
-                where:{
-                    id:input.id
+            const aiModel = await prismaClient.aIModel.findUnique({
+                where: {
+                    id: input.id
                 }
             })
-            if(!aiModel){
+            if (!aiModel) {
                 throw new TRPCError({
                     code: 'NOT_FOUND',
                     message: 'AI Model not found'
@@ -227,33 +297,33 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
         }
     }),
     //getMyModels
-    getMyModels:procedures.query(async({ctx})=>{
+    getMyModels: procedures.query(async ({ ctx }) => {
         try {
-             const user=await prismaClient.user.findUnique({
-                        where: {
-                            wallet: ctx.wallet.toString()
-                        }
-                    })
-                    if(!user){
-                        throw new TRPCError({
-                            code: 'NOT_FOUND',      
-                        })
-                    }
-            const whereClause={
-                owner:user.id
+            const user = await prismaClient.user.findUnique({
+                where: {
+                    wallet: ctx.wallet.toString()
+                }
+            })
+            if (!user) {
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                })
             }
-            const models=await prismaClient.aIModel.findMany({
-                where:{
-                    ownerId:user.id
+            const whereClause = {
+                owner: user.id
+            }
+            const models = await prismaClient.aIModel.findMany({
+                where: {
+                    ownerId: user.id
                 }
             });
             return models
-            
+
         } catch (error) {
-        console.log("An error occurred while fetching user's AI Models:", error);
-            throw new Error("Failed to fetch user's AI Models");   
+            console.log("An error occurred while fetching user's AI Models:", error);
+            throw new Error("Failed to fetch user's AI Models");
         }
     })
 
-    
+
 })
