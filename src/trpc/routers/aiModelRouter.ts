@@ -16,27 +16,7 @@ import { getKeypairFromFile } from '@solana-developers/helpers'
 import { address, createSolanaRpc } from 'gill'
 import { MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID } from '../../../clients/generated/umi/src'
 const prismaClient = new PrismaClient()
-const rpc = createSolanaRpc("http://127.0.0.1:8899")
-// aIModelProgramClient.getRegisterAiModelInstruction({})
-// const umi=createUmi("http://127.0.0.1:8899");
-// let wallet:Keypair;
-//  getKeypairFromFile().then((data)=>{
-//     wallet=data
-//     const keypair=umi.eddsa.createKeypairFromSecretKey(wallet.secretKey);
-//     const signer=createSignerFromKeypair(umi,keypair)
-//     umi.use(signerIdentity(signer));
-//  })
-// const roleToMeta = (account: any): AccountMeta => {
-//     // console.log("account",account)
-//   const pubkey = new PublicKey(account.address.toString());
-//   const role = account.role;
-
-//     return {
-//     pubkey,
-//     isSigner: account.role === AccountRole.WRITABLE_SIGNER || account.role === AccountRole.READONLY_SIGNER,
-//     isWritable: account.role === AccountRole.WRITABLE_SIGNER || account.role === AccountRole.WRITABLE,
-//   };
-// };
+import {rpc} from '../index'
 export const aiModelRouter = router({
     //register a new Ai Model
     //done
@@ -215,6 +195,7 @@ export const aiModelRouter = router({
         pendingRegistrationId: z.number(),
     })).mutation(async ({ input, ctx }) => {
         try {
+            console.log("In the confirm registration function")
             const user = await prismaClient.user.findUnique({
                 where: {
                     wallet: ctx.wallet.toString()

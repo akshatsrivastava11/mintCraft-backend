@@ -4,43 +4,52 @@ import { createContentSchema } from "../schemas/createContentSchema";
 import { xid, z } from 'zod'
 import { PrismaClient } from "../../database/generated/prisma";
 import { uploadFileToIPFS } from "../../utils/upload";
-import { submitContent, MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID, mintContentAsNft } from '../../clients/nftProgram/umi/src'
+// import { submitContent, MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID, mintContentAsNft } from '../../clients/nftProgram/umi/src'
+import * as nftProgram from '../../clients/nftProgram/js/src'
 import { PublicKey, SYSVAR_RENT_PUBKEY } from "@solana/web3.js";
 import { uuid } from "zod";
-import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
+// import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, SYSTEM_PROGRAM_ADDRESS, TOKEN_METADATA_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from 'gill/programs';
-
+import { address, createRpc } from 'gill'
 import { publicKey } from "@metaplex-foundation/umi";
 import { findMetadataPda } from "@metaplex-foundation/mpl-token-metadata";
 import { findAssociatedTokenPda } from '@metaplex-foundation/mpl-toolbox'
 import { TRPCError } from "@trpc/server";
+import { sendRequest } from "../../utils/request";
 const prismaClient = new PrismaClient();
-const umi = createUmi("https://api.devnet.solana.com");
+import {rpc} from '../index'
+// const umi = createUmi("https://api.devnet.solana.com");
 export const contentRouter = router({
     generate: procedures.input(createContentSchema).mutation(async ({ input, ctx }) => {
         try {
-                 const user=await prismaClient.user.findUnique({
-                               where: {
-                                   wallet: ctx.wallet.toString()
-                               }
-                           })
-                           if(!user){
-                               throw new TRPCError({
-                                   code: 'NOT_FOUND',      
-                               })
-                           }
-const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
-            const contentAccount = umi.eddsa.findPda(MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
-                [Buffer.from("content"), Buffer.from(id.toString())]
-            )
+            const user = await prismaClient.user.findUnique({
+                where: {
+                    wallet: ctx.wallet.toString()
+                }
+            })
+            if (!user) {
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                })
+            }
             const aiModel = await prismaClient.aIModel.findUnique({
                 where: {
                     id: input.aiModelId
                 }
             })
             if (!aiModel) {
-                throw new Error("AI Model not found");
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                })
             }
+            const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+            //    const contentAccount = umi.eddsa.findPda(MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
+            //     [Buffer.from("content"), Buffer.from(id.toString())]
+            // )
+            const contentAccount = await PublicKey.findProgramAddressSync(
+                [Buffer.from("content"), Buffer.from(id.toString())],
+                new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID)
+            )
 
             const contentType = input.contentType;
             if (!contentType) {
@@ -61,34 +70,73 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
             }, "metadata", ctx.wallet);
             const contentUri = await uploadFileToIPFS(input.contentData, "content", ctx.wallet);
 
-            const transactionBuilder = await submitContent(umi, {
-                aiModelUsed: publicKey(aiModel.aiModelPublicKey),
-                creator: ctx.wallet,
-                contentAccount: contentAccount,
-                systemProgram: publicKey(SYSTEM_PROGRAM_ADDRESS)
+            // const transactionBuilder = await submitContent(umi, {
+            //     aiModelUsed: publicKey(aiModel.aiModelPublicKey),
+            //     creator: ctx.wallet,
+            //     contentAccount: contentAccount,
+            //     systemProgram: publicKey(SYSTEM_PROGRAM_ADDRESS)
 
-            }, {
+            // }, {
+            //     aiModelRoyalty: aiModel.royaltyPercentage,
+            //     aiModelUsed: publicKey(aiModel.aiModelPublicKey),
+            //     contentIpfs: contentUri,
+            //     contentType: contentTypeId,
+            //     id: id,
+            //     metadataIpfs: metadataUri,
+            //     prompt: input.prompt
+            // })
+            // const transaction = await transactionBuilder.buildAndSign(umi)
+            const transactionIx = await nftProgram.getSubmitContentInstruction({
                 aiModelRoyalty: aiModel.royaltyPercentage,
                 aiModelUsed: publicKey(aiModel.aiModelPublicKey),
+                aiModelUsedArg: publicKey(aiModel.aiModelPublicKey),
+                contentAccount: contentAccount,
                 contentIpfs: contentUri,
                 contentType: contentTypeId,
                 id: id,
                 metadataIpfs: metadataUri,
-                prompt: input.prompt
+                prompt: input.prompt,
+                systemProgram: publicKey(SYSTEM_PROGRAM_ADDRESS),
+                user: ctx.wallet
             })
-            const transaction = await transactionBuilder.buildAndSign(umi)
-            const serializedTransaction = umi.transactions.serialize(transaction);
+            const keys: AccountMeta[] = (transactionIx.accounts).map((account) => {
+                return {
+                    pubkey: new PublicKey(account.address),
+                    isSigner: account.address.toString() == ctx.wallet.toString(),
+                    isWritable: account.role === AccountRole.WRITABLE_SIGNER || account.role === AccountRole.WRITABLE,
+                };
 
+            });
+                const convertedIx = new TransactionInstruction({
+                    keys: keys,
+                    programId: new PublicKey(transactionIx.programAddress),
+                    data: Buffer.from(transactionIx.data), // Ensure it's a Buffer/Uint8Array
+                });
+                console.log("convertedIx", convertedIx)
+                const recentBlockhash = await (await rpc.getLatestBlockhash()).send().then((data) => {
+                    return data.value.blockhash.toString()
+                });
+                const Tx = new Transaction({
+                    feePayer: new PublicKey(ctx.wallet),
+                    recentBlockhash: recentBlockhash
+                }).add(convertedIx)
+                // Tx.partialSign()
+                const serializedTransaction = Tx.serialize({requireAllSignatures:false})
+
+            const headers = aiModel.headersJSONstring
+            const apiEndpoint = aiModel.apiEndpoint
+            const response = await sendRequest(apiEndpoint, headers, input.prompt)
             const pendingTransaction = await prismaClient.pendingContentSubmission.create({
                 data: {
                     aiModel: aiModel.aiModelPublicKey,
                     contentUri: contentUri,
                     metadataUri: metadataUri,
-                    contentId:id,
+                    contentId: id,
                     expiredAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiry
                     createdAt: new Date(),
                     serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
                     creatorId: user.id,
+                    response: response,
                     contentType: contentTypeId,
                     prompt: input.prompt,
                     user: ctx.wallet
@@ -113,16 +161,16 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
         pendingContentId: z.number()
     })).mutation(async ({ input, ctx }) => {
         try {
-                  const user=await prismaClient.user.findUnique({
-                                where: {
-                                    wallet: ctx.wallet.toString()
-                                }
-                            })
-                            if(!user){
-                                throw new TRPCError({
-                                    code: 'NOT_FOUND',      
-                                })
-                            }
+            const user = await prismaClient.user.findUnique({
+                where: {
+                    wallet: ctx.wallet.toString()
+                }
+            })
+            if (!user) {
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                })
+            }
             const pendingContent = await prismaClient.pendingContentSubmission.findUnique({
                 where: {
                     id: input.pendingContentId,
@@ -155,6 +203,7 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
                     creator: ctx.wallet,
                     creatorId: pendingContent.creatorId,
                     id: pendingContent.id,
+                    response: pendingContent.response
                 },
                 include: {
                     creator: {
@@ -192,16 +241,16 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
     }))
         .mutation(async ({ input, ctx }) => {
             try {
-             const user=await prismaClient.user.findUnique({
-                           where: {
-                               wallet: ctx.wallet.toString()
-                           }
-                       })
-                       if(!user){
-                           throw new TRPCError({
-                               code: 'NOT_FOUND',      
-                           })
-                       }
+                const user = await prismaClient.user.findUnique({
+                    where: {
+                        wallet: ctx.wallet.toString()
+                    }
+                })
+                if (!user) {
+                    throw new TRPCError({
+                        code: 'NOT_FOUND',
+                    })
+                }
 
                 const content = await prismaClient.content.findUnique({
                     where: {
@@ -268,7 +317,7 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
 
                 const transaction = await transactionBuilder.buildAndSign(umi)
                 const serializedTransaction = umi.transactions.serialize(transaction);
-    const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+                const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
                 const pendingNft = await prismaClient.pendingNFTSubmission.create({
                     data: {
                         mintAddress: mint.toString(),
@@ -278,7 +327,7 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
                         owner: ctx.wallet,
                         ownerId: content.creatorId,
                         tokenAccount: tokenAccount.toString(),
-                        nftId:id
+                        nftId: id
                     }
                 })
                 return {
@@ -299,17 +348,17 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
         pendingNftId: z.number()
     })).mutation(async ({ input, ctx }) => {
         try {
-          const user=await prismaClient.user.findUnique({
-                        where: {
-                            wallet: ctx.wallet.toString()
-                        }
-                    })
-                    if(!user){
-                        throw new TRPCError({
-                            code: 'NOT_FOUND',      
-                        })
-                    }
-            
+            const user = await prismaClient.user.findUnique({
+                where: {
+                    wallet: ctx.wallet.toString()
+                }
+            })
+            if (!user) {
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                })
+            }
+
             const pendingNFT = await prismaClient.pendingNFTSubmission.findUnique({
                 where: {
                     id: input.pendingNftId,
@@ -323,18 +372,18 @@ const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
                 });
             }
 
-            const nft =await prismaClient.nFT.create({
-                data:{
+            const nft = await prismaClient.nFT.create({
+                data: {
                     mintAddress: pendingNFT.mintAddress,
                     ownerId: pendingNFT.ownerId,
-                    
+
                     tokenAccount: pendingNFT.tokenAccount,
-                    contentId:pendingNFT.contentId,
-                    createdAt:pendingNFT.createdAt,
-                    id:pendingNFT.id,
+                    contentId: pendingNFT.contentId,
+                    createdAt: pendingNFT.createdAt,
+                    id: pendingNFT.id,
                 }
             })
-               
+
             await prismaClient.pendingNFTSubmission.delete({
                 where: {
                     id: input.pendingNftId
