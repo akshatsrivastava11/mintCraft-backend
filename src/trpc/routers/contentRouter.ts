@@ -22,11 +22,13 @@ import {rpc} from '../index'
 export const contentRouter = router({
     generate: procedures.input(createContentSchema).mutation(async ({ input, ctx }) => {
         try {
+            console.log("contentRouter generate")
             const user = await prismaClient.user.findUnique({
                 where: {
                     wallet: ctx.wallet.toString()
                 }
             })
+            console.log("user from generate content ",user)
             if (!user) {
                 throw new TRPCError({
                     code: 'NOT_FOUND',
@@ -37,6 +39,7 @@ export const contentRouter = router({
                     id: input.aiModelId
                 }
             })
+            console.log("aiModel from generate content ",aiModel)
             if (!aiModel) {
                 throw new TRPCError({
                     code: 'NOT_FOUND',
@@ -46,11 +49,13 @@ export const contentRouter = router({
             //    const contentAccount = umi.eddsa.findPda(MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
             //     [Buffer.from("content"), Buffer.from(id.toString())]
             // )
+            console.log("id from generate content ",Buffer.from(id.toString()))
+            console.log("mintcraftnftprogramprogramid from generate content ",nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
             const contentAccount = await PublicKey.findProgramAddressSync(
                 [Buffer.from("content"), Buffer.from(id.toString())],
-                new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID)
+                new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
             )
-
+            // console.log(contentAccount)
             const contentType = input.contentType;
             if (!contentType) {
                 throw new Error("Content type is required");
@@ -59,6 +64,7 @@ export const contentRouter = router({
             if (!arr.includes(contentType)) {
                 throw new Error("Invalid content type");
             }
+            // console.log("222222222222222",contentType)
             const contentTypeId = arr.indexOf(contentType);
             const metadataUri = await uploadFileToIPFS({
                 title: input.title,
@@ -68,6 +74,7 @@ export const contentRouter = router({
                 prompt: input.prompt,
                 wallet: ctx.wallet,
             }, "metadata", ctx.wallet);
+            console.log("metadata uri",metadataUri)
             const contentUri = await uploadFileToIPFS(input.contentData, "content", ctx.wallet);
 
             // const transactionBuilder = await submitContent(umi, {

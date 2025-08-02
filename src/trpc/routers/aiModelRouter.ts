@@ -12,7 +12,7 @@ import { uuid } from 'zod'
 import { AccountRole, createTransaction } from 'gill'
 // import { generateKeyPair } from 'gill/programs'
 import { getUserConfig } from '../../config/aiModelConfigs'
-import { getKeypairFromFile } from '@solana-developers/helpers'
+// import { getKeypairFromFile } from '@solana-developers/helpers'
 import { address, createSolanaRpc } from 'gill'
 import { MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID } from '../../../clients/generated/umi/src'
 const prismaClient = new PrismaClient()
@@ -175,6 +175,7 @@ export const aiModelRouter = router({
             }
         }),
     getAll: procedures.query(async (ctx) => {
+        console.log("getAll triggered")
         const aiModels = await prismaClient.aIModel.findMany({
             where: {
                 isActive: true

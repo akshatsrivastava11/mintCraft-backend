@@ -28,7 +28,7 @@
     "esrun": "^3.2.30",
     "express": "^5.1.0",
     "gill": "^0.10.2",
-    "ipfs-http-client": "^60.0.1",
+    "ipfs-http-client": "^50.1.2",
     "tsconfig-paths": "^4.2.0",
     "uuid": "^11.1.0",
     "yn": "^5.0.0",
