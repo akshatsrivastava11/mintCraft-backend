@@ -6,11 +6,11 @@ import { PrismaClient } from "../../database/generated/prisma";
 import { uploadFileToIPFS } from "../../utils/upload";
 // import { submitContent, MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID, mintContentAsNft } from '../../clients/nftProgram/umi/src'
 import * as nftProgram from '../../clients/nftProgram/js/src'
-import { PublicKey, SYSVAR_RENT_PUBKEY } from "@solana/web3.js";
+import { PublicKey, SYSVAR_RENT_PUBKEY, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { uuid } from "zod";
 // import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, SYSTEM_PROGRAM_ADDRESS, TOKEN_METADATA_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from 'gill/programs';
-import { address, createRpc } from 'gill'
+import { address, createRpc,AccountRole } from 'gill'
 import { publicKey } from "@metaplex-foundation/umi";
 import { findMetadataPda } from "@metaplex-foundation/mpl-token-metadata";
 import { findAssociatedTokenPda } from '@metaplex-foundation/mpl-toolbox'
@@ -28,7 +28,7 @@ export const contentRouter = router({
                     wallet: ctx.wallet.toString()
                 }
             })
-            console.log("user from generate content ",user)
+            // console.log("user from generate content ",user)
             if (!user) {
                 throw new TRPCError({
                     code: 'NOT_FOUND',
@@ -39,7 +39,7 @@ export const contentRouter = router({
                     id: input.aiModelId
                 }
             })
-            console.log("aiModel from generate content ",aiModel)
+            // console.log("aiModel from generate content ",aiModel)
             if (!aiModel) {
                 throw new TRPCError({
                     code: 'NOT_FOUND',
@@ -49,8 +49,8 @@ export const contentRouter = router({
             //    const contentAccount = umi.eddsa.findPda(MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
             //     [Buffer.from("content"), Buffer.from(id.toString())]
             // )
-            console.log("id from generate content ",Buffer.from(id.toString()))
-            console.log("mintcraftnftprogramprogramid from generate content ",nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
+            // console.log("id from generate content ",Buffer.from(id.toString()))
+            // console.log("mintcraftnftprogramprogramid from generate content ",nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
             const contentAccount = await PublicKey.findProgramAddressSync(
                 [Buffer.from("content"), Buffer.from(id.toString())],
                 new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
@@ -129,10 +129,12 @@ export const contentRouter = router({
                 }).add(convertedIx)
                 // Tx.partialSign()
                 const serializedTransaction = Tx.serialize({requireAllSignatures:false})
-
+                console.log("serializedtx is",serializedTransaction)
             const headers = aiModel.headersJSONstring
             const apiEndpoint = aiModel.apiEndpoint
+            console.log("headers and apiEndpoint",headers,apiEndpoint)
             const response = await sendRequest(apiEndpoint, headers, input.prompt)
+            console.log("response is ",response)
             const pendingTransaction = await prismaClient.pendingContentSubmission.create({
                 data: {
                     aiModel: aiModel.aiModelPublicKey,

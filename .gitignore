@@ -6,3 +6,4 @@
 /src/clients
 /clients
 clients/
+.env
