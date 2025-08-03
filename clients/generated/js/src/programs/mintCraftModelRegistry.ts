@@ -21,7 +21,7 @@ import {
 } from '../instructions';
 
 export const MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ADDRESS =
-  '6pKDeeU6C4t2i6C9FnTfgiFKQM5EhNbyZNJ2jwU2DuPw' as Address<'6pKDeeU6C4t2i6C9FnTfgiFKQM5EhNbyZNJ2jwU2DuPw'>;
+  'W626GLKRRbE1rPZnNgi5kHgUUfFTiyzPqdvS196NdaZ' as Address<'W626GLKRRbE1rPZnNgi5kHgUUfFTiyzPqdvS196NdaZ'>;
 
 export enum MintCraftModelRegistryAccount {
   AiModel,
@@ -132,7 +132,7 @@ export function identifyMintCraftModelRegistryInstruction(
 }
 
 export type ParsedMintCraftModelRegistryInstruction<
-  TProgram extends string = '6pKDeeU6C4t2i6C9FnTfgiFKQM5EhNbyZNJ2jwU2DuPw',
+  TProgram extends string = 'W626GLKRRbE1rPZnNgi5kHgUUfFTiyzPqdvS196NdaZ',
 > =
   | ({
       instructionType: MintCraftModelRegistryInstruction.DismantleAiModel;

@@ -3,32 +3,47 @@ import { procedures, router } from '..'
 import { TRPCError } from '@trpc/server'
 import { PrismaClient } from '../../database/generated/prisma'
 import { RegisterAIModelSchema } from '../schemas/registerAIModelSchema'
-// import {registerAiModel,MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID} from '../../../clients/generated/umi/src'
+// import {registerAiModel,aIModelProgramClient.MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ADDRESS} from '../../../clients/generated/umi/src'
 import * as aIModelProgramClient from '../../../clients/generated/js/src'
 // import { createUmi } from '@metaplex-foundation/umi-bundle-defaults'
 // import { createSignerFromKeypair, generateSigner, publicKey, signerIdentity } from '@metaplex-foundation/umi'
-import { AccountMeta, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js'
+import { AccountMeta, Connection, Keypair, PublicKey, SendTransactionError, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js'
 import { uuid } from 'zod'
 import { AccountRole, createTransaction } from 'gill'
 // import { generateKeyPair } from 'gill/programs'
-import { getUserConfig } from '../../config/aiModelConfigs'
+import { getUserConfig } from '../config/aiModelConfigs'
 // import { getKeypairFromFile } from '@solana-developers/helpers'
 import { address, createSolanaRpc } from 'gill'
-import { MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID } from '../../../clients/generated/umi/src'
+// import { aIModelProgramClient.MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ADDRESS } from '../../../clients/generated/umi/src'
 const prismaClient = new PrismaClient()
 import {rpc} from '../index'
+
 export const aiModelRouter = router({
     //register a new Ai Model
     //done
     initializeUserConfig: procedures.mutation(async ({ ctx }) => {
         console.log("wallet", ctx.wallet)
-        console.log(typeof ctx.wallet)
+        console.log("In the initializeUserConfig")
+        const connection=new Connection("https://api.devnet.solana.com")
+        const accountInfo = await connection.getAccountInfo(new PublicKey(ctx.wallet),{commitment:'confirmed'});
+        console.log('accountInfo',accountInfo)
+if (accountInfo !== null) {
+  console.log("Account exists!");
+  return {
+    sucess:true,
+
+  }
+} else {
+  console.log("Account does NOT exist!");
+
+
         const serializedTransaction = await getUserConfig(ctx.wallet);
         return {
             success: true,
             message: "User config initialized successfully",
             serializedTransaction: Buffer.from(serializedTransaction).toString('base64')
         }
+    }
     }),
     //done
     register: procedures.input(RegisterAIModelSchema)
@@ -48,30 +63,31 @@ export const aiModelRouter = router({
                 let userPubkey = new PublicKey(ctx.wallet)
                 console.log("register")
                 const globalStatePda = await PublicKey.findProgramAddressSync(
-                    [Buffer.from("global_state")],
-                    new PublicKey(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID)
+                    [Buffer.from("globalAiState")],
+                    new PublicKey(aIModelProgramClient.MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ADDRESS)
                 )[0]
+                console.log("globalStatePda", globalStatePda)
                 const aiModelPda = await PublicKey.findProgramAddressSync(
                     [Buffer.from("ai"), Buffer.from(input.name), userPubkey.toBuffer(), globalStatePda.toBuffer()],
-                    new PublicKey(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID)
+                    new PublicKey(aIModelProgramClient.MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ADDRESS)
                 )[0]
-                // const aiModelPda=umi.eddsa.findPda(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
+                // const aiModelPda=umi.eddsa.findPda(aIModelProgramClient.MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ADDRESS,
                 //     [Buffer.from("ai"), Buffer.from(input.name), userPubkey.toBuffer(), globalStatePda.toBuffer()],
                 // )
 
                 // const globalState=umi.eddsa.findPda(
-                //     MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
+                //     aIModelProgramClient.MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ADDRESS,
                 //     [Buffer.from("global_state")],
                 // )
                 const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
                 //sends the transaction 
                 // const userConfig=umi.eddsa.findPda(
-                //     MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID,
+                //     aIModelProgramClient.MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ADDRESS,
                 //     [Buffer.from("user_config"), userPubkey.toBuffer()]
                 // )
                 const userConfig = await PublicKey.findProgramAddressSync(
-                    [Buffer.from("user_config"), userPubkey.toBuffer()],
-                    new PublicKey(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID)
+                    [Buffer.from("user"), userPubkey.toBuffer()],
+                    new PublicKey(aIModelProgramClient.MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ADDRESS)
                 )[0]
                 if (!userConfig) {
                     throw new TRPCError({
@@ -91,7 +107,7 @@ export const aiModelRouter = router({
                     userConfig: address(userConfig.toString()),
                     systemProgram: address(SystemProgram.programId.toString())
                 }, {
-                    programAddress: address(MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ID)
+                    programAddress: address(aIModelProgramClient.MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ADDRESS)
                 })
                 console.log("transactionIx is ", transactionIx)
                 // transactionIx.accounts[0].signer
@@ -113,6 +129,7 @@ export const aiModelRouter = router({
                 const recentBlockhash = await (await rpc.getLatestBlockhash()).send().then((data) => {
                     return data.value.blockhash.toString()
                 });
+                console.log("recentBlockhash", recentBlockhash)
                 const Tx = new Transaction({
                     feePayer: new PublicKey(ctx.wallet),
                     recentBlockhash: recentBlockhash
@@ -168,8 +185,11 @@ export const aiModelRouter = router({
                     pendingRegistrationId: pendingTransaction.id,
                     modelId: id
                 }
-
+                
             } catch (error) {
+                if(error instanceof SendTransactionError){
+            console.log("send transaction errors :", error.getLogs(new Connection("https://api.devnet.solana.com")));
+        }
                 console.log("An error occurred while registering AI Model:", error);
                 throw new Error("Failed to register AI Model");
             }
@@ -199,7 +219,7 @@ export const aiModelRouter = router({
             console.log("In the confirm registration function")
             const user = await prismaClient.user.findUnique({
                 where: {
-                    wallet: ctx.wallet.toString()
+                    wallet: ctx.wallet
                 }
             })
             if (!user) {
@@ -231,7 +251,8 @@ export const aiModelRouter = router({
                     aiModelPublicKey: pendingRegistration.aiModelPublicKey,
                     headersJSONstring: pendingRegistration.headersJSONstring,
                     createdAt: new Date(),
-                    id: pendingRegistration.id
+                    id: pendingRegistration.id,
+
                 },
                 include: {
                     owner: {

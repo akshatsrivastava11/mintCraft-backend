@@ -17,6 +17,7 @@ import { findAssociatedTokenPda } from '@metaplex-foundation/mpl-toolbox'
 import { TRPCError } from "@trpc/server";
 import { sendRequest } from "../../utils/request";
 const prismaClient = new PrismaClient();
+// const MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS=address("W626GLKRRbE1rPZnNgi5kHgUUfFTiyzPqdvS196NdaZ")
 import {rpc} from '../index'
 // const umi = createUmi("https://api.devnet.solana.com");
 export const contentRouter = router({
@@ -64,8 +65,11 @@ export const contentRouter = router({
             if (!arr.includes(contentType)) {
                 throw new Error("Invalid content type");
             }
+            const response = await sendRequest(apiEndpoint, headers, input.prompt)
+            console.log("response is ",response)
             // console.log("222222222222222",contentType)
             const contentTypeId = arr.indexOf(contentType);
+            const contentUri = await uploadFileToIPFS(response, "content", ctx.wallet);
             const metadataUri = await uploadFileToIPFS({
                 title: input.title,
                 description: input.description,
@@ -73,9 +77,9 @@ export const contentRouter = router({
                 aiModelId: input.aiModelId,
                 prompt: input.prompt,
                 wallet: ctx.wallet,
+                content_uri: contentUri
             }, "metadata", ctx.wallet);
             console.log("metadata uri",metadataUri)
-            const contentUri = await uploadFileToIPFS(input.contentData, "content", ctx.wallet);
 
             // const transactionBuilder = await submitContent(umi, {
             //     aiModelUsed: publicKey(aiModel.aiModelPublicKey),
@@ -133,8 +137,6 @@ export const contentRouter = router({
             const headers = aiModel.headersJSONstring
             const apiEndpoint = aiModel.apiEndpoint
             console.log("headers and apiEndpoint",headers,apiEndpoint)
-            const response = await sendRequest(apiEndpoint, headers, input.prompt)
-            console.log("response is ",response)
             const pendingTransaction = await prismaClient.pendingContentSubmission.create({
                 data: {
                     aiModel: aiModel.aiModelPublicKey,

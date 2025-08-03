@@ -131,7 +131,7 @@ export function getGlobalStateGpaBuilder(
 ) {
   const programId = context.programs.getPublicKey(
     'mintCraftModelRegistry',
-    '6pKDeeU6C4t2i6C9FnTfgiFKQM5EhNbyZNJ2jwU2DuPw'
+    'W626GLKRRbE1rPZnNgi5kHgUUfFTiyzPqdvS196NdaZ'
   );
   return gpaBuilder(context, programId)
     .registerFields<{
