@@ -5,5 +5,5 @@ export const RegisterAIModelSchema=z.object({
     description:z.string(),
     apiEndpoint:z.string(),
     royaltyPerGeneration:z.number().min(0).max(50),
-    headersJSONstring:z.string()
+    headersJSONstring:z.record(z.string(),z.string())
 })

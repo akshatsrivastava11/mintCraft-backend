@@ -1,34 +1,59 @@
-import Arweave from 'arweave'
-const arweave=Arweave.init({
-  host:'127.0.0.1',
-  port:1984,
-  protocol:'http'
+import {PinataSDK} from 'pinata'
+import dotenv from 'dotenv'
+dotenv.config()
+console.log("process.env.PINATA_JWT",process.env.PINATA_JWT)
+const pinata=new PinataSDK({
+  pinataJwt:process.env.PINATA_JWT,
 })
+type MetadataInput={
+                title: string,
+                description: string,
+                contentType: string,
+                aiModelId: string,
+                prompt: string,
+                wallet: string,
+                content_uri: string
+}
 
 export async function uploadFileToIPFS(
-  data: any, 
+  data: MetadataInput | Blob, 
   type: 'metadata' | 'content', 
   wallet: string
-): Promise<string> {
-  const arweaveKey=await arweave.wallets.generate()
-  const arweaveWalletAddress=await arweave.wallets.jwkToAddress(arweaveKey)
+): Promise<string|Error> {
+ 
   // Generate a mock IPFS hash for testing
-  if (type=='content'){
-    let transaction=await arweave.createTransaction({data},arweaveKey)
-    transaction.addTag('Content-Type', 'image/png')
-    await arweave.transactions.sign(transaction,arweaveKey)
-    const response=await arweave.transactions.post(transaction)
-    const status=await arweave.transactions.getStatus(transaction.id)
-    console.log(status)
-    return `https://arweave.net/${transaction.id}`
+  if (type=='content' && data instanceof Blob){
+     console.log("Is a content")
+     console.log("the data content is ",data)
+const file = new File([data], "NFTIMAGE", { type: data.type || 'image/png' })
+     const upload=await pinata.upload.public.file(file)
+     console.log("The upload",upload)
+     return upload.cid
+     
   }
-  else{
-    let transaction=await arweave.createTransaction({data},arweaveKey)
-    transaction.addTag('Content-Type', 'application/json')
-    await arweave.transactions.sign(transaction,arweaveKey)
-    const response=await arweave.transactions.post(transaction)
-    const status=await arweave.transactions.getStatus(transaction.id)
-    console.log(status)
-    return `https://arweave.net/${transaction.id}`
+  else{     
+
+    let metadata:Record<string,any>;
+  if (typeof data === 'object' && !(data instanceof Blob)) {
+      metadata = {
+        name: data.title,
+        description: data.description,
+        prompt: data.prompt,
+        properties: {
+          aiModelId: data.aiModelId,
+          contentType: data.contentType,
+          creator: data.wallet,
+          content_uri: data.content_uri
+        }
+      }
+    }
+      else{
+        return Error("Invalid metadata")
+      }
+      console.log("Is a metadata")
+      const upload=await pinata.upload.public.json(metadata)
+      console.log("The upload",upload)
+    return upload.cid
+    
   }
 }

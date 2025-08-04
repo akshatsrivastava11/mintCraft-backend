@@ -18,7 +18,7 @@ import {
 } from '../errors';
 
 export const MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID =
-  'BrrVsyYH1Ght4cZwZYuWNY7659skft5wYHYrxPndgKQv' as PublicKey<'BrrVsyYH1Ght4cZwZYuWNY7659skft5wYHYrxPndgKQv'>;
+  'FqDJgJMNxGqpR8p3A7mtp4Cyow2DiXrXFoGCL1RXYsvU' as PublicKey<'FqDJgJMNxGqpR8p3A7mtp4Cyow2DiXrXFoGCL1RXYsvU'>;
 
 export function createMintCraftNftProgramProgram(): Program {
   return {

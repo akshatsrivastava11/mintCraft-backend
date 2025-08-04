@@ -106,7 +106,7 @@ export function submitContent(
   // Program ID.
   const programId = context.programs.getPublicKey(
     'mintCraftNftProgram',
-    'BrrVsyYH1Ght4cZwZYuWNY7659skft5wYHYrxPndgKQv'
+    'FqDJgJMNxGqpR8p3A7mtp4Cyow2DiXrXFoGCL1RXYsvU'
   );
 
   // Accounts.

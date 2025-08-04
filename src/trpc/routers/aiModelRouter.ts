@@ -173,7 +173,7 @@ if (accountInfo !== null) {
                         serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
                         createdAt: new Date(),
                         expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiry
-                        headersJSONstring: input.headersJSONstring
+                        headersJSON: input.headersJSONstring
                     }
                 })
 
@@ -249,7 +249,7 @@ if (accountInfo !== null) {
                     royaltyPercentage: pendingRegistration.royaltyPercentage,
                     isActive: true,
                     aiModelPublicKey: pendingRegistration.aiModelPublicKey,
-                    headersJSONstring: pendingRegistration.headersJSONstring,
+                    headersJSON: pendingRegistration.headersJSON ?? {},
                     createdAt: new Date(),
                     id: pendingRegistration.id,
 

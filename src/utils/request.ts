@@ -1,10 +1,43 @@
-export const sendRequest=async (apiEndpoint:string,headers:string,body:string)=>{
+export const sendRequest=async (apiEndpoint:string,headers:Record<string,string>,body:string)=>{
+    console.log("In the send request")
+    console.log("the headers",headers)
 
-    const response=await fetch(apiEndpoint,{
-        headers:JSON.parse(headers),
+    console.log("the body",body)
+    // console.log("the headers",JSON.parse(headers))
+
+    const str={
+        headers,
         method:"POST",
-        body:JSON.stringify(body)
+        body:JSON.stringify({
+    "response_format": "b64_json",
+    "prompt": "\"Astronaut riding a horse\"",
+    "model": "black-forest-labs/flux-dev"
     })
-    const result=response.blob()
-    return result
+    }
+    console.log("the str",str)
+    console.log("the api endpoint",apiEndpoint)
+    const response=await fetch(apiEndpoint,str)
+    const json=await response.json()
+  const base64 = json.data?.[0]?.b64_json;
+      console.log("the result",base64)
+        const blob = base64ToBlob(base64, "image/png"); // or "image/jpeg" depending on model
+        console.log("The blob ",blob)
+    return blob
+}
+ function base64ToBlob(base64:any, mimeType = "image/png") {
+  const byteCharacters = atob(base64);
+  const byteArrays = [];
+
+  for (let i = 0; i < byteCharacters.length; i += 512) {
+    const slice = byteCharacters.slice(i, i + 512);
+    const byteNumbers = new Array(slice.length).fill(0).map((_, i) => slice.charCodeAt(i));
+    const byteArray = new Uint8Array(byteNumbers);
+    byteArrays.push(byteArray);
+  }
+
+  return new Blob(byteArrays, { type: mimeType });
+}
+export async function blobToBase64(blob: Blob): Promise<string> {
+  const arrayBuffer = await blob.arrayBuffer();
+  return Buffer.from(arrayBuffer).toString('base64');
 }

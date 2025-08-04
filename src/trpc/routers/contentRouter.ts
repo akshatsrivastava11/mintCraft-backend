@@ -2,6 +2,7 @@
 import { procedures, router } from "..";
 import { createContentSchema } from "../schemas/createContentSchema";
 import { xid, z } from 'zod'
+import {BN} from '@coral-xyz/anchor'
 import { PrismaClient } from "../../database/generated/prisma";
 import { uploadFileToIPFS } from "../../utils/upload";
 // import { submitContent, MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID, mintContentAsNft } from '../../clients/nftProgram/umi/src'
@@ -10,93 +11,105 @@ import { PublicKey, SYSVAR_RENT_PUBKEY, Transaction, TransactionInstruction } fr
 import { uuid } from "zod";
 // import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, SYSTEM_PROGRAM_ADDRESS, TOKEN_METADATA_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from 'gill/programs';
-import { address, createRpc,AccountRole } from 'gill'
+import { address, createRpc,AccountRole, LAMPORTS_PER_SOL } from 'gill'
 import { publicKey } from "@metaplex-foundation/umi";
 import { findMetadataPda } from "@metaplex-foundation/mpl-token-metadata";
 import { findAssociatedTokenPda } from '@metaplex-foundation/mpl-toolbox'
 import { TRPCError } from "@trpc/server";
-import { sendRequest } from "../../utils/request";
+import { sendRequest,blobToBase64 } from "../../utils/request";
+// import 
 const prismaClient = new PrismaClient();
 // const MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS=address("W626GLKRRbE1rPZnNgi5kHgUUfFTiyzPqdvS196NdaZ")
 import {rpc} from '../index'
 // const umi = createUmi("https://api.devnet.solana.com");
 export const contentRouter = router({
-    generate: procedures.input(createContentSchema).mutation(async ({ input, ctx }) => {
+   generate: procedures.input(createContentSchema).mutation(async ({ input, ctx }) => {
         try {
-            console.log("contentRouter generate")
+            console.log("contentRouter generate with payment integration");
+            
             const user = await prismaClient.user.findUnique({
-                where: {
-                    wallet: ctx.wallet.toString()
-                }
-            })
-            // console.log("user from generate content ",user)
+                where: { wallet: ctx.wallet.toString() }
+            });
+            console.log("the user is ",user)
+            
             if (!user) {
-                throw new TRPCError({
-                    code: 'NOT_FOUND',
-                })
+                throw new TRPCError({ code: 'NOT_FOUND' });
             }
+
             const aiModel = await prismaClient.aIModel.findUnique({
-                where: {
-                    id: input.aiModelId
-                }
-            })
-            // console.log("aiModel from generate content ",aiModel)
+                where: { id: input.aiModelId }
+            });
+            
             if (!aiModel) {
-                throw new TRPCError({
-                    code: 'NOT_FOUND',
-                })
+                throw new TRPCError({ code: 'NOT_FOUND' });
             }
-            const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
-            //    const contentAccount = umi.eddsa.findPda(MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
-            //     [Buffer.from("content"), Buffer.from(id.toString())]
-            // )
-            // console.log("id from generate content ",Buffer.from(id.toString()))
-            // console.log("mintcraftnftprogramprogramid from generate content ",nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
-            const contentAccount = await PublicKey.findProgramAddressSync(
-                [Buffer.from("content"), Buffer.from(id.toString())],
-                new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
-            )
-            // console.log(contentAccount)
-            const contentType = input.contentType;
-            if (!contentType) {
-                throw new Error("Content type is required");
-            }
-            const arr = ["image", "music", "text", "video"]
-            if (!arr.includes(contentType)) {
-                throw new Error("Invalid content type");
-            }
-            const response = await sendRequest(apiEndpoint, headers, input.prompt)
-            console.log("response is ",response)
-            // console.log("222222222222222",contentType)
-            const contentTypeId = arr.indexOf(contentType);
+
+            // Generate content first
+            const headers = aiModel.headersJSON;
+            const apiEndpoint = aiModel.apiEndpoint;
+            console.log("Calling AI model API...");
+            console.log("header and apiEndpoint",headers,apiEndpoint)
+            // const response = await sendRequest(apiEndpoint, headers, input.prompt);
+            console.log("AI response received");
+
+             const response=new Blob(
+    [JSON.stringify({ text: "This is a mock response for testing purposes." })],
+    { type: 'application/json' }
+  );//for tests only
+            // Upload content to IPFS first (free operation)
             const contentUri = await uploadFileToIPFS(response, "content", ctx.wallet);
-            const metadataUri = await uploadFileToIPFS({
+            console.log("Content uploaded to IPFS:", contentUri);
+
+            // Prepare metadata for upload
+            const metadataToUpload = {
                 title: input.title,
                 description: input.description,
-                contentType: contentType,
+                contentType: input.contentType,
                 aiModelId: input.aiModelId,
                 prompt: input.prompt,
                 wallet: ctx.wallet,
-                content_uri: contentUri
-            }, "metadata", ctx.wallet);
-            console.log("metadata uri",metadataUri)
+                content_uri: contentUri,
+                // Additional NFT metadata
+                attributes: [
+                    {
+                        trait_type: "Generation Date",
+                        value: new Date().toISOString().split('T')[0]
+                    },
+                    {
+                        trait_type: "AI Model Version",
+                        value: aiModel.version || "1.0"
+                    }
+                ],
+                // Add external_url based on environment
+                external_url: process.env.NODE_ENV === 'production'
+                    ? `${process.env.NEXT_PUBLIC_APP_URL}/content/${ctx.wallet}/${input.contentType}`
+                    : `http://localhost:3000/content/${ctx.wallet}/${input.contentType}`,
+                // Add animation_url for video/audio content
+                ...(["video", "music"].includes(input.contentType) && {
+                    animation_url: contentUri
+                })
+            };
 
-            // const transactionBuilder = await submitContent(umi, {
-            //     aiModelUsed: publicKey(aiModel.aiModelPublicKey),
-            //     creator: ctx.wallet,
-            //     contentAccount: contentAccount,
-            //     systemProgram: publicKey(SYSTEM_PROGRAM_ADDRESS)
+            // Upload metadata to IPFS (this is what costs money)
+            console.log("Uploading metadata to IPFS...");
+            const metadataUri = await uploadFileToIPFS(metadataToUpload, "metadata", ctx.wallet);
+            console.log("Metadata uploaded to IPFS:", metadataUri);
 
-            // }, {
-            //     aiModelRoyalty: aiModel.royaltyPercentage,
-            //     aiModelUsed: publicKey(aiModel.aiModelPublicKey),
-            //     contentIpfs: contentUri,
-            //     contentType: contentTypeId,
-            //     id: id,
-            //     metadataIpfs: metadataUri,
-            //     prompt: input.prompt
-            // })
-            // const transaction = await transactionBuilder.buildAndSign(umi)
+            // Create blockchain transaction data
+            const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+            const contentAccount = await PublicKey.findProgramAddressSync(
+                [Buffer.from("content"), new BN(id).toArrayLike(Buffer, "le", 8)],
+                new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
+            );
+
+            // Validate content type
+            const validContentTypes = ["image", "music", "text", "video"];
+            if (!validContentTypes.includes(input.contentType)) {
+                throw new Error("Invalid content type");
+            }
+            const contentTypeId = validContentTypes.indexOf(input.contentType);
+
+            // Create the submit content instruction
             const transactionIx = await nftProgram.getSubmitContentInstruction({
                 aiModelRoyalty: aiModel.royaltyPercentage,
                 aiModelUsed: publicKey(aiModel.aiModelPublicKey),
@@ -108,65 +121,96 @@ export const contentRouter = router({
                 metadataIpfs: metadataUri,
                 prompt: input.prompt,
                 systemProgram: publicKey(SYSTEM_PROGRAM_ADDRESS),
-                user: ctx.wallet
-            })
-            const keys: AccountMeta[] = (transactionIx.accounts).map((account) => {
-                return {
-                    pubkey: new PublicKey(account.address),
-                    isSigner: account.address.toString() == ctx.wallet.toString(),
-                    isWritable: account.role === AccountRole.WRITABLE_SIGNER || account.role === AccountRole.WRITABLE,
-                };
-
+                creator: publicKey(ctx.wallet),
+            },{
+                programAddress: nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS
             });
-                const convertedIx = new TransactionInstruction({
-                    keys: keys,
-                    programId: new PublicKey(transactionIx.programAddress),
-                    data: Buffer.from(transactionIx.data), // Ensure it's a Buffer/Uint8Array
-                });
-                console.log("convertedIx", convertedIx)
-                const recentBlockhash = await (await rpc.getLatestBlockhash()).send().then((data) => {
-                    return data.value.blockhash.toString()
-                });
-                const Tx = new Transaction({
-                    feePayer: new PublicKey(ctx.wallet),
-                    recentBlockhash: recentBlockhash
-                }).add(convertedIx)
-                // Tx.partialSign()
-                const serializedTransaction = Tx.serialize({requireAllSignatures:false})
-                console.log("serializedtx is",serializedTransaction)
-            const headers = aiModel.headersJSONstring
-            const apiEndpoint = aiModel.apiEndpoint
-            console.log("headers and apiEndpoint",headers,apiEndpoint)
+            
+            // Add payment instruction for metadata upload cost
+            // const METADATA_UPLOAD_COST = 0.01 * LAMPORTS_PER_SOL; // 0.01 SOL
+            // const TREASURY_WALLET = new PublicKey(process.env.TREASURY_WALLET_ADDRESS!);
+            
+            // const paymentIx = SystemProgram.transfer({
+            //     fromPubkey: new PublicKey(ctx.wallet),
+            //     toPubkey: TREASURY_WALLET,
+            //     lamports: METADATA_UPLOAD_COST
+            // });
+
+            // Convert submit content instruction
+            const keys: AccountMeta[] = transactionIx.accounts.map((account) => ({
+                pubkey: new PublicKey(account.address),
+                isSigner: account.address.toString() === ctx.wallet.toString(),
+                isWritable: account.role === AccountRole.WRITABLE_SIGNER || account.role === AccountRole.WRITABLE,
+            }));
+
+            const convertedSubmitIx = new TransactionInstruction({
+                keys: keys,
+                programId: new PublicKey(transactionIx.programAddress),
+                data: Buffer.from(transactionIx.data),
+            });
+
+            // Create transaction with both payment and content submission
+            const recentBlockhash = await rpc.getLatestBlockhash().send()
+                .then(data => data.value.blockhash.toString());
+
+            const transaction = new Transaction({
+                feePayer: new PublicKey(ctx.wallet),
+                recentBlockhash: recentBlockhash
+            })           // Payment for metadata first
+            .add(convertedSubmitIx);  // Then content submission
+            
+            const serializedTransaction = transaction.serialize({ requireAllSignatures: false });
+            const response1=await blobToBase64(response)
+            // Store pending 
+              console.log("user id is ",user.id)
             const pendingTransaction = await prismaClient.pendingContentSubmission.create({
                 data: {
-                    aiModel: aiModel.aiModelPublicKey,
+                      aiModel: aiModel.aiModelPublicKey,
+
                     contentUri: contentUri,
                     metadataUri: metadataUri,
-                    contentId: id,
                     expiredAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiry
                     createdAt: new Date(),
                     serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
-                    creatorId: user.id,
-                    response: response,
+                    creatorId: user.id || null, 
+                    response: response1,
                     contentType: contentTypeId,
                     prompt: input.prompt,
-                    user: ctx.wallet
+                    contentId:id
                 }
-            })
+            });
+
+                    // console.log("PRogram addresss is",transactionIx.programAddress)
             return {
                 success: true,
-                message: "Content transaction created successfully. Please sign with your wallet.",
+                message: "Content and metadata prepared. Please sign the transaction to pay for metadata storage and submit content.",
                 serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
-                contentAccountPublicKey: contentAccount.toString(),
+                contentAccountPublicKey: contentAccount[0].toString(),
                 pendingContentId: pendingTransaction.id,
-                contentId: id
-            }
-
+                contentId: id,
+                contentUri: contentUri,
+                metadataUri: metadataUri,
+                paymentDescription: "Payment for IPFS metadata storage"
+            };
+            
         } catch (error) {
-            console.log("An error occurred while generating content:", error);
-            throw new Error("Failed to generate content");
+            console.error("Error in content generation:", error);
+            
+            // If this was an IPFS-related error, provide specific feedback
+            if (error.message.includes('IPFS') || error.message.includes('Pinata')) {
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: 'Failed to upload to IPFS storage. Please try again.'
+                });
+            }
+            
+            throw new TRPCError({
+                code: 'INTERNAL_SERVER_ERROR',
+                message: 'Failed to generate content. Please try again.'
+            });
         }
     }),
+
     confirmContentSubmission: procedures.input(z.object({
         transactionSignature: z.string(),
         pendingContentId: z.number()
@@ -203,6 +247,7 @@ export const contentRouter = router({
                     message: 'Content submission expired. Please try again.'
                 });
             }
+            
             const content = await prismaClient.content.create({
                 data: {
                     aiModel: pendingContent.aiModel,

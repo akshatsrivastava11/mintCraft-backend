@@ -21,7 +21,7 @@ import {
 } from '../instructions';
 
 export const MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS =
-  'BrrVsyYH1Ght4cZwZYuWNY7659skft5wYHYrxPndgKQv' as Address<'BrrVsyYH1Ght4cZwZYuWNY7659skft5wYHYrxPndgKQv'>;
+  'FqDJgJMNxGqpR8p3A7mtp4Cyow2DiXrXFoGCL1RXYsvU' as Address<'FqDJgJMNxGqpR8p3A7mtp4Cyow2DiXrXFoGCL1RXYsvU'>;
 
 export enum MintCraftNftProgramAccount {
   ContentAccount,
@@ -144,7 +144,7 @@ export function identifyMintCraftNftProgramInstruction(
 }
 
 export type ParsedMintCraftNftProgramInstruction<
-  TProgram extends string = 'BrrVsyYH1Ght4cZwZYuWNY7659skft5wYHYrxPndgKQv',
+  TProgram extends string = 'FqDJgJMNxGqpR8p3A7mtp4Cyow2DiXrXFoGCL1RXYsvU',
 > =
   | ({
       instructionType: MintCraftNftProgramInstruction.InitializeConfig;
