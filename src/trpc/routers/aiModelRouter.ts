@@ -89,6 +89,7 @@ if (accountInfo !== null) {
                     [Buffer.from("user"), userPubkey.toBuffer()],
                     new PublicKey(aIModelProgramClient.MINT_CRAFT_MODEL_REGISTRY_PROGRAM_ADDRESS)
                 )[0]
+                console.log("user config is ",userConfig)
                 if (!userConfig) {
                     throw new TRPCError({
                         code: 'NOT_FOUND',
@@ -173,7 +174,12 @@ if (accountInfo !== null) {
                         serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
                         createdAt: new Date(),
                         expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiry
-                        headersJSON: input.headersJSONstring
+                        headersJSON: input.headersJSONstring,
+                        bodyTemplate:input.bodyTemplate,
+                        httpMethod:input.httpMethod,
+                        userPromptField:input.userPromptField,
+                        finalContentField:input.finalContentField,
+                        responseTemplate:input.responseTemplate
                     }
                 })
 
@@ -252,7 +258,11 @@ if (accountInfo !== null) {
                     headersJSON: pendingRegistration.headersJSON ?? {},
                     createdAt: new Date(),
                     id: pendingRegistration.id,
-
+                    bodyTemplate:pendingRegistration.bodyTemplate,
+                    httpMethod:pendingRegistration.httpMethod,
+                    userPromptField:pendingRegistration.userPromptField,
+                    finalContentField:pendingRegistration.finalContentField,
+                    responseTemplate:pendingRegistration.responseTemplate
                 },
                 include: {
                     owner: {

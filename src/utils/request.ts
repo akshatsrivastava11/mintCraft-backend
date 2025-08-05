@@ -1,4 +1,4 @@
-export const sendRequest=async (apiEndpoint:string,headers:Record<string,string>,body:string)=>{
+export const sendRequest=async (apiEndpoint:string,headers:Record<string,string>,body:string,responseTemplate:string,toBeplaced:string)=>{
     console.log("In the send request")
     console.log("the headers",headers)
 
@@ -8,21 +8,23 @@ export const sendRequest=async (apiEndpoint:string,headers:Record<string,string>
     const str={
         headers,
         method:"POST",
-        body:JSON.stringify({
-    "response_format": "b64_json",
-    "prompt": "\"Astronaut riding a horse\"",
-    "model": "black-forest-labs/flux-dev"
-    })
+        body:JSON.parse(body)
     }
     console.log("the str",str)
     console.log("the api endpoint",apiEndpoint)
     const response=await fetch(apiEndpoint,str)
     const json=await response.json()
-  const base64 = json.data?.[0]?.b64_json;
-      console.log("the result",base64)
-        const blob = base64ToBlob(base64, "image/png"); // or "image/jpeg" depending on model
-        console.log("The blob ",blob)
-    return blob
+    const path=findFinalBlobPath(JSON.parse(responseTemplate),toBeplaced)
+    console.log("the final path is ",path)
+    console.log("response is ",response)
+    console.log("json is ",json)
+    const finalResponse=getValueAtPath(json,path[0])
+    console.log("the final response is ",finalResponse)
+      // console.log("the result",base64)
+      //   const blob = base64ToBlob(base64, "image/png"); // or "image/jpeg" depending on model
+    //     console.log("The blob ",blob)
+    // return blob
+    return finalResponse//for tests only
 }
  function base64ToBlob(base64:any, mimeType = "image/png") {
   const byteCharacters = atob(base64);
@@ -40,4 +42,26 @@ export const sendRequest=async (apiEndpoint:string,headers:Record<string,string>
 export async function blobToBase64(blob: Blob): Promise<string> {
   const arrayBuffer = await blob.arrayBuffer();
   return Buffer.from(arrayBuffer).toString('base64');
+}
+
+
+function findFinalBlobPath(obj:JSON, targetPlaceholder:string) {
+  const path:any = [];
+
+  function dfs(current:any, currentPath:any) {
+    if (current === targetPlaceholder) {
+      path.push([...currentPath]);
+    } else if (typeof current === "object" && current !== null) {
+      for (const key in current) {
+        dfs(current[key], [...currentPath, key]);
+      }
+    }
+  }
+
+  dfs(obj, []);
+  return path;
+}
+
+function getValueAtPath(obj:any, path:any) {
+  return path.reduce((acc:any, key:any) => acc && acc[key], obj);
 }

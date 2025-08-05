@@ -1,7 +1,7 @@
 //@ts-nocheck
 import { procedures, router } from "..";
 import { createContentSchema } from "../schemas/createContentSchema";
-import { bigint, xid, z } from 'zod'
+import { bigint, string, xid, z } from 'zod'
 import { BN } from '@coral-xyz/anchor'
 import { PrismaClient } from "../../database/generated/prisma";
 import { uploadFileToIPFS } from "../../utils/upload";
@@ -69,6 +69,8 @@ export const contentRouter = router({
             console.log("User config already exists!");
             return {
                 success: true,
+                alreadyExists:true,
+                message:"User configs already exists",
                 serializedTransaction: null,
             };
         } else {
@@ -79,6 +81,7 @@ export const contentRouter = router({
             return {
                 success: true,
                 message: "User config initialized successfully",
+                alreadyExists:false,
                 serializedTransaction: Buffer.from(serializedTransaction).toString("base64"),
             };
         }
@@ -107,17 +110,38 @@ export const contentRouter = router({
             // Generate content first
             const headers = aiModel.headersJSON;
             const apiEndpoint = aiModel.apiEndpoint;
+            const body=aiModel.bodyTemplate
+            const userprompt=aiModel.userPromptField
+            console.log("user prompt is ", userprompt)
+            console.log("the body is ", body)
+            console.log("the input is ", input)
+            const newBody=body.replace(userprompt,input.prompt)
+            const responseTemplate=aiModel.responseTemplate
+            const toBeplaced=aiModel.finalContentField
+            console.log("the body is ", newBody)
+            console.log("the json body is ", JSON.stringify(newBody),responseTemplate,toBeplaced)
             console.log("Calling AI model API...");
             console.log("header and apiEndpoint", headers, apiEndpoint)
-            // const response = await sendRequest(apiEndpoint, headers, input.prompt);
+            
+            // const body = input.prompt
+            const response = await sendRequest(apiEndpoint, headers, JSON.stringify(newBody),responseTemplate,toBeplaced);
             console.log("AI response received");
 
-            const response = new Blob(
-                [JSON.stringify({ text: "This is a mock response for testing purposes." })],
-                { type: 'application/json' }
-            );//for tests only
+            // const response = new Blob(
+            //     [JSON.stringify({ text: "This is a mock response for testing purposes." })],
+            //     { type: 'application/json' }
+            // );//for tests only
             // Upload content to IPFS first (free operation)
-            const contentUri = await uploadFileToIPFS(response, "content", ctx.wallet);
+            let contentUri;
+            if(typeof response=="string" ){
+                if(response.startsWith("http://") || response.startsWith("https://")){
+                    contentUri=response
+                }
+                else{
+                    
+                    contentUri = await uploadFileToIPFS(response, "content", ctx.wallet);
+                }
+            }
             console.log("Content uploaded to IPFS:", contentUri);
 
             // Prepare metadata for upload
@@ -223,7 +247,7 @@ export const contentRouter = router({
                 .add(convertedSubmitIx);  // Then content submission
 
             const serializedTransaction = transaction.serialize({ requireAllSignatures: false });
-            const response1 = await blobToBase64(response)
+            // const response1 = await blobToBase64(response)
             // Store pending 
             console.log("user id is ", user.id)
             const pendingTransaction = await prismaClient.pendingContentSubmission.create({
@@ -236,7 +260,7 @@ export const contentRouter = router({
                     createdAt: new Date(),
                     serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
                     creatorId: user.id || null,
-                    response: response1,
+                    response: Buffer.from(response,'utf-8'),
                     contentType: contentTypeId,
                     prompt: input.prompt,
                     contentId: id
