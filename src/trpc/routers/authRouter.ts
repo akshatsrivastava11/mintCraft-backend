@@ -14,22 +14,12 @@ export const authRouter=router({
                     where:{
                         wallet:input.walletAddress
                     },
-                    include:{
-                        aiModels:true,
-                        contents:true,
-                        nfts:true
-                    }
                 })
                 console.log(user)
                 if (!user){
                     user=await prismaClient.user.create({
                         data:{
                             wallet:input.walletAddress
-                        },
-                        include:{
-                            aiModels:true,
-                            contents:true,
-                            nfts:true
                         }
                     })
                 }

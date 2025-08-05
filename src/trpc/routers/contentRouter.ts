@@ -1,37 +1,97 @@
 //@ts-nocheck
 import { procedures, router } from "..";
 import { createContentSchema } from "../schemas/createContentSchema";
-import { xid, z } from 'zod'
-import {BN} from '@coral-xyz/anchor'
+import { bigint, xid, z } from 'zod'
+import { BN } from '@coral-xyz/anchor'
 import { PrismaClient } from "../../database/generated/prisma";
 import { uploadFileToIPFS } from "../../utils/upload";
 // import { submitContent, MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID, mintContentAsNft } from '../../clients/nftProgram/umi/src'
 import * as nftProgram from '../../clients/nftProgram/js/src'
-import { PublicKey, SYSVAR_RENT_PUBKEY, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { Connection, PublicKey, SYSVAR_RENT_PUBKEY, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { uuid } from "zod";
 // import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, SYSTEM_PROGRAM_ADDRESS, TOKEN_METADATA_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from 'gill/programs';
-import { address, createRpc,AccountRole, LAMPORTS_PER_SOL } from 'gill'
-import { publicKey } from "@metaplex-foundation/umi";
-import { findMetadataPda } from "@metaplex-foundation/mpl-token-metadata";
-import { findAssociatedTokenPda } from '@metaplex-foundation/mpl-toolbox'
+import { address, createRpc, AccountRole, LAMPORTS_PER_SOL } from 'gill'
+// import { publicKey } from "@metaplex-foundation/umi";
+// import { findMetadataPda } from "@metaplex-foundation/mpl-token-metadata";
+// import { findAssociatedTokenPda } from '@metaplex-foundation/mpl-toolbox'
 import { TRPCError } from "@trpc/server";
-import { sendRequest,blobToBase64 } from "../../utils/request";
+import { sendRequest, blobToBase64 } from "../../utils/request";
 // import 
 const prismaClient = new PrismaClient();
 // const MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS=address("W626GLKRRbE1rPZnNgi5kHgUUfFTiyzPqdvS196NdaZ")
-import {rpc} from '../index'
-// const umi = createUmi("https://api.devnet.solana.com");
+import { rpc } from '../index'
+import { initializeUserConfig } from "../config/nftProgramConfigs";
+const findAssociatedTokenAddress = async (mint: PublicKey, owner: String): Promise<[PublicKey, number]> => {
+    return await PublicKey.findProgramAddressSync(
+        [
+            new PublicKey(owner).toBuffer(),
+            new PublicKey(TOKEN_PROGRAM_ADDRESS).toBuffer(),
+            mint.toBuffer(),
+        ],
+        new PublicKey(ASSOCIATED_TOKEN_PROGRAM_ADDRESS)
+    );
+};
+
+const findMetadataAddress = async (mint: PublicKey): Promise<[PublicKey, number]> => {
+    return await PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("metadata"),
+            new PublicKey(TOKEN_METADATA_PROGRAM_ADDRESS).toBuffer(),
+            mint.toBuffer(),
+        ],
+        new PublicKey(TOKEN_METADATA_PROGRAM_ADDRESS)
+    );
+};
+
 export const contentRouter = router({
-   generate: procedures.input(createContentSchema).mutation(async ({ input, ctx }) => {
+    initilizeUserConfig: procedures.mutation(async ({ ctx }) => {
+        console.log("wallet", ctx.wallet);
+        console.log("In the initializeUserConfig");
+        const config=await PublicKey.findProgramAddressSync(
+            [Buffer.from("config")],
+            new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
+        )
+        const connection = new Connection("https://api.devnet.solana.com");
+
+        // ✅ Derive user_config PDA
+        const [userConfigPda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("user_config"), config[0].toBuffer(),new PublicKey(ctx.wallet).toBuffer()],
+            new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
+        );
+
+        // ✅ Check if the PDA exists
+        const accountInfo = await connection.getAccountInfo(userConfigPda, {
+            commitment: "confirmed",
+        });
+        console.log("777777777777777",accountInfo)
+        if (accountInfo?.data) {
+            console.log("User config already exists!");
+            return {
+                success: true,
+                serializedTransaction: null,
+            };
+        } else {
+            console.log("User config does NOT exist! Initializing...");
+
+            const serializedTransaction = await initializeUserConfig(ctx.wallet);
+
+            return {
+                success: true,
+                message: "User config initialized successfully",
+                serializedTransaction: Buffer.from(serializedTransaction).toString("base64"),
+            };
+        }
+    }),
+    generate: procedures.input(createContentSchema).mutation(async ({ input, ctx }) => {
         try {
             console.log("contentRouter generate with payment integration");
-            
+
             const user = await prismaClient.user.findUnique({
                 where: { wallet: ctx.wallet.toString() }
             });
-            console.log("the user is ",user)
-            
+            console.log("the user is ", user)
+
             if (!user) {
                 throw new TRPCError({ code: 'NOT_FOUND' });
             }
@@ -39,7 +99,7 @@ export const contentRouter = router({
             const aiModel = await prismaClient.aIModel.findUnique({
                 where: { id: input.aiModelId }
             });
-            
+
             if (!aiModel) {
                 throw new TRPCError({ code: 'NOT_FOUND' });
             }
@@ -48,14 +108,14 @@ export const contentRouter = router({
             const headers = aiModel.headersJSON;
             const apiEndpoint = aiModel.apiEndpoint;
             console.log("Calling AI model API...");
-            console.log("header and apiEndpoint",headers,apiEndpoint)
+            console.log("header and apiEndpoint", headers, apiEndpoint)
             // const response = await sendRequest(apiEndpoint, headers, input.prompt);
             console.log("AI response received");
 
-             const response=new Blob(
-    [JSON.stringify({ text: "This is a mock response for testing purposes." })],
-    { type: 'application/json' }
-  );//for tests only
+            const response = new Blob(
+                [JSON.stringify({ text: "This is a mock response for testing purposes." })],
+                { type: 'application/json' }
+            );//for tests only
             // Upload content to IPFS first (free operation)
             const contentUri = await uploadFileToIPFS(response, "content", ctx.wallet);
             console.log("Content uploaded to IPFS:", contentUri);
@@ -96,12 +156,15 @@ export const contentRouter = router({
             console.log("Metadata uploaded to IPFS:", metadataUri);
 
             // Create blockchain transaction data
-            const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+            const id = crypto.getRandomValues(new Uint32Array(1))[0] % 2_000_000_000;
             const contentAccount = await PublicKey.findProgramAddressSync(
                 [Buffer.from("content"), new BN(id).toArrayLike(Buffer, "le", 8)],
                 new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
             );
+            console.log("00000000000000000000000",id)
+            console.log("22222222222222222222222", contentAccount[0])
 
+            console.log("8888888888888888888888888888888", id)
             // Validate content type
             const validContentTypes = ["image", "music", "text", "video"];
             if (!validContentTypes.includes(input.contentType)) {
@@ -112,24 +175,24 @@ export const contentRouter = router({
             // Create the submit content instruction
             const transactionIx = await nftProgram.getSubmitContentInstruction({
                 aiModelRoyalty: aiModel.royaltyPercentage,
-                aiModelUsed: publicKey(aiModel.aiModelPublicKey),
-                aiModelUsedArg: publicKey(aiModel.aiModelPublicKey),
+                aiModelUsed: address(aiModel.aiModelPublicKey),
+                aiModelUsedArg: address(aiModel.aiModelPublicKey),
                 contentAccount: contentAccount,
                 contentIpfs: contentUri,
                 contentType: contentTypeId,
                 id: id,
                 metadataIpfs: metadataUri,
                 prompt: input.prompt,
-                systemProgram: publicKey(SYSTEM_PROGRAM_ADDRESS),
-                creator: publicKey(ctx.wallet),
-            },{
+                systemProgram: address(SYSTEM_PROGRAM_ADDRESS),
+                creator: address(ctx.wallet),
+            }, {
                 programAddress: nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS
             });
-            
+
             // Add payment instruction for metadata upload cost
             // const METADATA_UPLOAD_COST = 0.01 * LAMPORTS_PER_SOL; // 0.01 SOL
             // const TREASURY_WALLET = new PublicKey(process.env.TREASURY_WALLET_ADDRESS!);
-            
+
             // const paymentIx = SystemProgram.transfer({
             //     fromPubkey: new PublicKey(ctx.wallet),
             //     toPubkey: TREASURY_WALLET,
@@ -157,45 +220,45 @@ export const contentRouter = router({
                 feePayer: new PublicKey(ctx.wallet),
                 recentBlockhash: recentBlockhash
             })           // Payment for metadata first
-            .add(convertedSubmitIx);  // Then content submission
-            
+                .add(convertedSubmitIx);  // Then content submission
+
             const serializedTransaction = transaction.serialize({ requireAllSignatures: false });
-            const response1=await blobToBase64(response)
+            const response1 = await blobToBase64(response)
             // Store pending 
-              console.log("user id is ",user.id)
+            console.log("user id is ", user.id)
             const pendingTransaction = await prismaClient.pendingContentSubmission.create({
                 data: {
-                      aiModel: aiModel.aiModelPublicKey,
+                    aiModel: aiModel.aiModelPublicKey,
 
                     contentUri: contentUri,
                     metadataUri: metadataUri,
                     expiredAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiry
                     createdAt: new Date(),
                     serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
-                    creatorId: user.id || null, 
+                    creatorId: user.id || null,
                     response: response1,
                     contentType: contentTypeId,
                     prompt: input.prompt,
-                    contentId:id
+                    contentId: id
                 }
             });
-
-                    // console.log("PRogram addresss is",transactionIx.programAddress)
+            console.log("3333333333333333333333", pendingTransaction)
+            // console.log("PRogram addresss is",transactionIx.programAddress)
             return {
                 success: true,
                 message: "Content and metadata prepared. Please sign the transaction to pay for metadata storage and submit content.",
                 serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
                 contentAccountPublicKey: contentAccount[0].toString(),
                 pendingContentId: pendingTransaction.id,
-                contentId: id,
+                contentId: id.toString(),
                 contentUri: contentUri,
                 metadataUri: metadataUri,
                 paymentDescription: "Payment for IPFS metadata storage"
             };
-            
+
         } catch (error) {
             console.error("Error in content generation:", error);
-            
+
             // If this was an IPFS-related error, provide specific feedback
             if (error.message.includes('IPFS') || error.message.includes('Pinata')) {
                 throw new TRPCError({
@@ -203,7 +266,7 @@ export const contentRouter = router({
                     message: 'Failed to upload to IPFS storage. Please try again.'
                 });
             }
-            
+
             throw new TRPCError({
                 code: 'INTERNAL_SERVER_ERROR',
                 message: 'Failed to generate content. Please try again.'
@@ -216,6 +279,9 @@ export const contentRouter = router({
         pendingContentId: z.number()
     })).mutation(async ({ input, ctx }) => {
         try {
+            console.log("in the confirm content submission")
+            // const pendingContentId=BigInt(input.pendingContentId)
+            // console.log("pending contentid is",pendingContentId)
             const user = await prismaClient.user.findUnique({
                 where: {
                     wallet: ctx.wallet.toString()
@@ -232,6 +298,8 @@ export const contentRouter = router({
                     creatorId: user.id
                 }
             })
+            console.log("pending content is ", pendingContent)
+            console.log("pending content is", input.pendingContentId)
             if (!pendingContent) {
                 throw new TRPCError({
                     code: 'NOT_FOUND',
@@ -247,7 +315,7 @@ export const contentRouter = router({
                     message: 'Content submission expired. Please try again.'
                 });
             }
-            
+            // console.log("")
             const content = await prismaClient.content.create({
                 data: {
                     aiModel: pendingContent.aiModel,
@@ -256,10 +324,10 @@ export const contentRouter = router({
                     metadataUri: pendingContent.metadataUri,
                     prompt: pendingContent.prompt,
                     createdAt: pendingContent.createdAt,
-                    creator: ctx.wallet,
                     creatorId: pendingContent.creatorId,
-                    id: pendingContent.id,
-                    response: pendingContent.response
+                    response: pendingContent.response,
+                    contentId: pendingContent.contentId,
+                    id: pendingContent.id
                 },
                 include: {
                     creator: {
@@ -271,11 +339,13 @@ export const contentRouter = router({
                 }
 
             })
+            console.log('content is ', content)
             await prismaClient.pendingContentSubmission.delete({
                 where: {
                     id: input.pendingContentId
                 }
             })
+
             return {
                 success: true,
                 message: "Content submitted successfully",
@@ -297,6 +367,7 @@ export const contentRouter = router({
     }))
         .mutation(async ({ input, ctx }) => {
             try {
+                // const contentId=BigInt(input.contentIdis)
                 const user = await prismaClient.user.findUnique({
                     where: {
                         wallet: ctx.wallet.toString()
@@ -321,78 +392,132 @@ export const contentRouter = router({
                         message: 'Content not found or you are not the creator'
                     });
                 }
-                const mint = umi.eddsa.findPda(
-                    MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
-                    [Buffer.from("mint"), Buffer.from(content.id.toString(16).padStart(16, '0'), 'hex')]
+                console.log("The content is ", content)
+                // const mint = umi.eddsa.findPda(
+                //     MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
+                //     [Buffer.from("mint"), Buffer.from(content.id.toString(16).padStart(16, '0'), 'hex')]
+                // )
+                            console.log("00000000000000000000000",content.contentId)
+
+                const mint = await PublicKey.findProgramAddressSync(
+                    [Buffer.from("mint"), new BN(content.contentId).toArrayLike(Buffer, "le", 8)],
+                    new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
                 )
 
-                const metadata = findMetadataPda(umi, {
-                    mint: publicKey(mint[0].toString())
-                })
-                const contentAccount = umi.eddsa.findPda(
-                    MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
-                    [Buffer.from("content"), Buffer.from(content.id.toString())]
+
+                const metadata = await findMetadataAddress(mint[0]);
+                // const metadata=await PublicKey.findProgramAddressSync(
+
+                // )
+                // const contentAccount = umi.eddsa.findPda(
+                //     MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
+                //     [Buffer.from("content"), Buffer.from(content.id.toString())]
+                // )
+                const contentAccount = await PublicKey.findProgramAddressSync(
+                    [Buffer.from("content"), new BN(content.contentId).toArrayLike(Buffer, "le", 8)],
+                    new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
                 )
-                const config = umi.eddsa.findPda(
-                    MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
-                    [Buffer.from("config")]
+                console.log("22222222222222222222222", contentAccount[0])
+                // const config = umi.eddsa.findPda(
+                //     MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
+                //     [Buffer.from("config")]
+                // )
+                const config = await PublicKey.findProgramAddressSync(
+                    [Buffer.from("config")],
+                    new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
                 )
-                const userConfig = umi.eddsa.findPda(
-                    MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
-                    [Buffer.from("user_config"), ctx.wallet.toBuffer()]
+                // const userConfig = umi.eddsa.findPda(
+                //     MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
+                //     [Buffer.from("user_config"), ctx.wallet.toBuffer()]
+                // )
+                const userConfig = await PublicKey.findProgramAddressSync(
+                    [Buffer.from("user_config"),config[0].toBuffer() ,new PublicKey(ctx.wallet).toBuffer()],
+                    new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
                 )
-                const nftMetadata = umi.eddsa.findPda(
-                    MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
-                    [Buffer.from("nft_metadata"), Buffer.from(content.id.toString(16).padStart(16, '0'), 'hex')]
+                // const nftMetadata = umi.eddsa.findPda(
+                //     MINT_CRAFT_NFT_PROGRAM_PROGRAM_ID,
+                //     [Buffer.from("nft_metadata"), Buffer.from(content.id.toString(16).padStart(16, '0'), 'hex')]
+                // )
+                const nftMetadata = await PublicKey.findProgramAddressSync(
+                    [Buffer.from("nft_metadata"), new BN(content.contentId).toArrayLike(Buffer, "le", 8)],
+                    new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
                 )
-                const tokenAccount = findAssociatedTokenPda(
-                    umi,
-                    {
-                        mint: publicKey(mint),
-                        owner: ctx.wallet,
-                    }
-                )
-                const transactionBuilder = await mintContentAsNft(umi, {
-                    contentId: content.id,
-                    creator: ctx.wallet,
-                    metadata: metadata,
+                console.log("THE NFT METADATA IS", nftMetadata[0].toString())
+                console.log("NFTNAME IS",input.name)
+                console.log("SYMBOL IS",input.symbol)
+
+                const tokenAccount = await findAssociatedTokenAddress(mint[0], ctx.wallet);
+                const transactionIx = await nftProgram.getMintContentAsNftInstruction({
+                    contentId: content.contentId,
+                    creator: address(ctx.wallet),
+                    metadata: address(metadata[0].toString()),
                     nftName: input.name,
                     nftSymbol: input.symbol,
-                    mint: mint,
-                    config,
-                    rent: publicKey(SYSVAR_RENT_PUBKEY),
-                    contentAccount: contentAccount,
-                    nftMetadata,
-                    associatedTokenProgram: publicKey(ASSOCIATED_TOKEN_PROGRAM_ADDRESS),
-                    systemProgram: publicKey(SYSTEM_PROGRAM_ADDRESS),
-                    tokenAccount,
-                    tokenMetadataProgram: publicKey(TOKEN_METADATA_PROGRAM_ADDRESS),
-                    tokenProgram: publicKey(TOKEN_PROGRAM_ADDRESS),
-                    userConfig
-                })
+                    mint: address(mint[0].toString()),
+                    config: address(config[0].toString()),
+                    rent: address(SYSVAR_RENT_PUBKEY.toString()),
+                    contentAccount: address(contentAccount[0].toString()),
+                    nftMetadata: address(nftMetadata[0].toString()),
+                    associatedTokenProgram: address(ASSOCIATED_TOKEN_PROGRAM_ADDRESS),
+                    systemProgram: address(SYSTEM_PROGRAM_ADDRESS),
+                    tokenAccount: address(tokenAccount[0].toString()),
+                    tokenMetadataProgram: address(TOKEN_METADATA_PROGRAM_ADDRESS),
+                    tokenProgram: address(TOKEN_PROGRAM_ADDRESS),
+                    userConfig: address(userConfig[0].toString()),
+                    royaltyPercentage: input.royaltyPercentage
+                }, {
+                    programAddress: nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS
+                });
 
-                const transaction = await transactionBuilder.buildAndSign(umi)
-                const serializedTransaction = umi.transactions.serialize(transaction);
-                const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+                const keys: AccountMeta[] = transactionIx.accounts.map((account) => ({
+                    pubkey: new PublicKey(account.address),
+                    isSigner: account.address.toString() === ctx.wallet.toString(),
+                    isWritable: account.role === AccountRole.WRITABLE_SIGNER || account.role === AccountRole.WRITABLE,
+                }));
+
+                const convertedMintIx = new TransactionInstruction({
+                    keys: keys,
+                    programId: new PublicKey(transactionIx.programAddress),
+                    data: Buffer.from(transactionIx.data),
+                });
+
+                // Create transaction
+                const recentBlockhash = await rpc.getLatestBlockhash().send()
+                    .then(data => data.value.blockhash.toString());
+
+                const transaction = new Transaction({
+                    feePayer: new PublicKey(ctx.wallet),
+                    recentBlockhash: recentBlockhash
+                }).add(convertedMintIx);
+
+                const serializedTransaction = transaction.serialize({ requireAllSignatures: false });
+
+                // Generate a unique NFT ID
+                const nftId = crypto.getRandomValues(new Uint32Array(1))[0] % 2_000_000_000;
+                console.log("the nft id is ", nftId)
+                // Store pending NFT submission
                 const pendingNft = await prismaClient.pendingNFTSubmission.create({
                     data: {
-                        mintAddress: mint.toString(),
+                        mintAddress: mint[0].toString(),
                         serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
                         contentId: content.id,
                         createdAt: new Date(),
-                        owner: ctx.wallet,
-                        ownerId: content.creatorId,
-                        tokenAccount: tokenAccount.toString(),
-                        nftId: id
+                        ownerId: user.id,
+                        tokenAccount: tokenAccount[0].toString(),
+                        nftId: nftId,
+                        expiresAt: new Date(Date.now() + 10 * 60 * 1000) //10min
                     }
-                })
+                });
+
                 return {
                     success: true,
-                    message: "Content transaction created successfully. Please sign with your wallet.",
+                    message: "NFT minting transaction prepared. Please sign with your wallet.",
                     serializedTransaction: Buffer.from(serializedTransaction).toString('base64'),
                     pendingNftId: pendingNft.id,
-                    nftId: id
-                }
+                    nftId: nftId,
+                    mintAddress: mint[0].toString(),
+                    tokenAccount: tokenAccount[0].toString()
+                };
             } catch (error) {
                 console.log("An error occurred while minting as NFT:", error);
                 throw new Error("Failed to mint as NFT");
