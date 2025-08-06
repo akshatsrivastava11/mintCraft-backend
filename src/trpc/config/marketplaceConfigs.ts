@@ -50,8 +50,8 @@ const initializeGlobalMarketplace = async () => {
         transaction.recentBlockhash = recentBlockhash
         const connection = new Connection("https://api.devnet.solana.com")
         transaction.feePayer = new PublicKey(walletSigner.address)
-        const sign = await sendAndConfirmTransaction(connection, transaction, [keypair])
-        console.log("marketplace initialized ", sign)
+        // const sign = await sendAndConfirmTransaction(connection, transaction, [keypair])
+        // console.log("marketplace initialized ", sign)
         const marketplaceDb=await prismaClient.marketplace.create({
             data:{
                 createdAt:new Date(),                

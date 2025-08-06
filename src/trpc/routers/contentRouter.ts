@@ -529,9 +529,11 @@ export const contentRouter = router({
                         ownerId: user.id,
                         tokenAccount: tokenAccount[0].toString(),
                         nftId: nftId,
-                        expiresAt: new Date(Date.now() + 10 * 60 * 1000) //10min
+                        expiresAt: new Date(Date.now() + 10 * 60 * 1000) //10min,
+
                     }
                 });
+                console.log("the pending nft id is ",pendingNft.id)
 
                 return {
                     success: true,

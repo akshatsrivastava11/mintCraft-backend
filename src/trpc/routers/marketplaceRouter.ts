@@ -267,9 +267,12 @@ export const marketplaceRouter=router({
         if(!pendingList){
             throw new Error("Pending listing not found");
         }
+        console.log("the pending list is ",pendingList)
+        console.log("the user is ",user)
         if(pendingList.sellerId!==user.id){
             throw new Error("You are not the seller of this listing");
         }
+        // console.log("the pending list is ",pendingList)
         const listing=await prismaClient.listing.create({
             data:{
                 price:pendingList.price,
@@ -424,8 +427,24 @@ export const marketplaceRouter=router({
     }),
     
     getListings:procedures.query(async(ctx)=>{
-        const listings=await prismaClient.listing.findMany({})
-        return listings
+        try {
+            
+            console.log("in the get Listing serv")
+            const listings=await prismaClient.listing.findMany({})
+            console.log("the listings are",listings)
+            return listings.map((listing) => ({
+  ...listing,
+  price: listing.price.toString(), // or Number(listing.price)
+}));
+        } catch (error) {
+            console.log("An error occurred while fetching user's NFTs:", error);
+                throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Failed to fetch listings",
+      cause: error,
+    });
+        
+        }
     }),
     getMyListings:procedures.input(z.object({userPubkey:z.string()})).query(async({ctx})=>{
         const listings=await prismaClient.listing.findMany({
