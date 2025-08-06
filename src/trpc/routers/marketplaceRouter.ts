@@ -8,6 +8,7 @@ import { TRPCError } from '@trpc/server'
 import { AccountRole, address } from 'gill'
 import { initializeUserConfig } from '../config/marketplaceConfigs'
 import { ASSOCIATED_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@coral-xyz/anchor/dist/cjs/utils/token'
+import { SYSTEM_PROGRAM_ID } from '@coral-xyz/anchor/dist/cjs/native/system'
 const prismaClient=new PrismaClient()
 const findAssociatedTokenAddress = async (mint: PublicKey, owner: String): Promise<[PublicKey, number]> => {
     return await PublicKey.findProgramAddressSync(
@@ -293,9 +294,147 @@ export const marketplaceRouter=router({
             throw new Error("Failed to confirm listing");
         }
     }),
-    buyNft:procedures.input(z.object({})).mutation(async({input,ctx})=>{}),
-    getListings:procedures.input(z.object({})).query(async(ctx)=>{}),
-    getMyListings:procedures.input(z.object({})).query(async({ctx})=>{}),
+    buyNft:procedures.input(z.object({
+        listingId:z.number(),
+
+    })).mutation(async({input,ctx})=>{
+        let authority=new PublicKey("ET38XidWgif4n8u8T3hChmtL2MuCodbtPhBnGC9S13Nr")
+        const listingfromDb=await prismaClient.listing.findUnique({
+            where:{
+                id:input.listingId
+            },
+            include:{
+                nft:true,
+                marketplace:true,
+                seller:true
+            }
+        })
+        const marketplace=PublicKey.findProgramAddressSync(
+            [Buffer.from("marketplace")],
+            new PublicKey(marketplaceProgram.MINT_CRAFT_MARKETPLACE_PROGRAM_ADDRESS)
+        )[0]
+
+        // const listing =umi.eddsa.findPda(
+            //     MINT_CRAFT_MARKETPLACE_PROGRAM_ID,
+            //     [Buffer.from("listing"),marketplaceForPda.toBuffer(),ctx.wallet.toBuffer()]
+            // )
+            let listingId=listingfromDb?.listingId
+            if(!listingId){
+                throw new Error("Listing not found")
+            }
+            if(!listingfromDb?.sellerId){
+                throw new Error("Seller not found")
+            }
+            const idBuffer = Buffer.allocUnsafe(4);
+            idBuffer.writeUInt32LE(listingId, 0);
+        const listing=PublicKey.findProgramAddressSync(
+            [Buffer.from("listing"),marketplace.toBuffer(),idBuffer,new PublicKey(listingfromDb.seller.wallet.toString()).toBuffer()],
+            new PublicKey(marketplaceProgram.MINT_CRAFT_MARKETPLACE_PROGRAM_ADDRESS)
+        )
+        // const userConfig=umi.eddsa.findPda(
+        //     MINT_CRAFT_MARKETPLACE_PROGRAM_ID,
+        //     [Buffer.from("user"),ctx.wallet.toBuffer()]
+        // )
+        const makerConfig=PublicKey.findProgramAddressSync(
+            [Buffer.from("user"),new PublicKey(listingfromDb.seller.wallet.toString()).toBuffer()],
+            new PublicKey(marketplaceProgram.MINT_CRAFT_MARKETPLACE_PROGRAM_ADDRESS)
+        )
+
+        const makerMintAta=await findAssociatedTokenAddress(new PublicKey(listingfromDb.nft.mintAddress),listingfromDb.seller.wallet)
+        console.log("the listing,userConfig,userMintAta are ",listing,makerConfig,makerMintAta)
+        const nft=await prismaClient.nFT.findUnique(
+         {
+            where:{
+                mintAddress:listingfromDb.nft.mintAddress
+            }
+         }   
+        )
+        console.log("the nft is ",nft)
+        if(!nft){
+            throw new Error("NFT not found");
+        }
+        
+        // const vaultMint=findAssociatedTokenPda(
+        //     umi,
+        //     {
+        //         mint:publicKey(input.nft_mint),
+        //         owner:publicKey(listing),
+        //         tokenProgramId:publicKey(TOKEN_PROGRAM_ADDRESS)
+        //     }
+        // )
+        const vaultMint=await findAssociatedTokenAddress(new PublicKey(listingfromDb.nft.mintAddress),listing[0].toString())
+        console.log("the vault mint is ",vaultMint) 
+                     const user=await prismaClient.user.findUnique({
+                        where: {
+                            wallet: listingfromDb.seller.wallet
+                        }
+                    })
+                    if(!user){
+                        throw new TRPCError({
+                            code: 'NOT_FOUND',      
+                        })
+                    }
+                    console.log("the user is ",user)
+                        const takerAta=await findAssociatedTokenAddress(new PublicKey(listingfromDb.nft.mintAddress),ctx.wallet)
+    const takerConfig=PublicKey.findProgramAddressSync(
+            [Buffer.from("user"),new PublicKey(ctx.wallet).toBuffer()],
+            new PublicKey(marketplaceProgram.MINT_CRAFT_MARKETPLACE_PROGRAM_ADDRESS)
+        )
+
+        const transactionIx=await marketplaceProgram.getPurchaseInstruction({
+            authority:address(authority.toString()),
+            listing:address(listing[0].toString()),
+            maker:address(listingfromDb.seller.wallet.toString()),
+            makerAta:address(makerMintAta.toString()),
+            makerConfig:address(makerConfig[0].toString()),
+            marketplace:address(marketplace.toString()),
+            mint:address(listingfromDb.nft.mintAddress),
+            taker:address(ctx.wallet),
+            takerAta:address(takerAta[0].toString()),
+            takerConfig:address(takerConfig[0].toString()),
+            vault:address(vaultMint.toString()),
+            associatedTokenProgram:address(ASSOCIATED_PROGRAM_ID.toString()),
+            systemProgram:address(SYSTEM_PROGRAM_ID.toString()),
+            tokenProgram:address(TOKEN_PROGRAM_ID.toString()),
+        })
+         const keys: AccountMeta[] = transactionIx.accounts.map((account) => ({
+                pubkey: new PublicKey(account.address),
+                isSigner: account.address.toString() === ctx.wallet.toString(),
+                isWritable: account.role === AccountRole.WRITABLE_SIGNER || account.role === AccountRole.WRITABLE,
+            }));
+
+            const convertedSubmitIx = new TransactionInstruction({
+                keys: keys,
+                programId: new PublicKey(transactionIx.programAddress),
+                data: Buffer.from(transactionIx.data),
+            });
+
+            // Create transaction with both payment and content submission
+            const recentBlockhash = await rpc.getLatestBlockhash().send()
+                .then(data => data.value.blockhash.toString());
+
+            const transaction = new Transaction({
+                feePayer: new PublicKey(ctx.wallet),
+                recentBlockhash: recentBlockhash
+            })           // Payment for metadata first
+                .add(convertedSubmitIx);  // Then content submission
+
+            const serializedTransaction = transaction.serialize({ requireAllSignatures: false });
+            return serializedTransaction
+    }),
+    
+    getListings:procedures.query(async(ctx)=>{
+        const listings=await prismaClient.listing.findMany({})
+        return listings
+    }),
+    getMyListings:procedures.input(z.object({userPubkey:z.string()})).query(async({ctx})=>{
+        const listings=await prismaClient.listing.findMany({
+            where:{
+                sellerId:ctx.wallet
+            }
+        })
+        return listings
+    }),
     getMyPurchases:procedures.input(z.object({})).query(async({ctx})=>{})
 
 })
