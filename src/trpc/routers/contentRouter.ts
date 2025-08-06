@@ -124,13 +124,10 @@ export const contentRouter = router({
             console.log("header and apiEndpoint", headers, apiEndpoint)
             
             // const body = input.prompt
-            const response = await sendRequest(apiEndpoint, headers, JSON.stringify(newBody),responseTemplate,toBeplaced);
+            // const response = await sendRequest(apiEndpoint, headers, JSON.stringify(newBody),responseTemplate,toBeplaced);
             console.log("AI response received");
 
-            // const response = new Blob(
-            //     [JSON.stringify({ text: "This is a mock response for testing purposes." })],
-            //     { type: 'application/json' }
-            // );//for tests only
+            const response = "https://ipfs.io/ipfs/bafkreigf3s3eg6ilsgi5q72byqmzrlgcmfvv6m3aevhb6jai6avmv7tw2i"
             // Upload content to IPFS first (free operation)
             let contentUri;
             if(typeof response=="string" ){
@@ -141,6 +138,9 @@ export const contentRouter = router({
                     
                     contentUri = await uploadFileToIPFS(response, "content", ctx.wallet);
                 }
+            }
+            else{
+                contentUri = await uploadFileToIPFS(response, "content", ctx.wallet);
             }
             console.log("Content uploaded to IPFS:", contentUri);
 

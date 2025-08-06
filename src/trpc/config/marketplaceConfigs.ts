@@ -24,6 +24,8 @@ const initializeGlobalMarketplace = async () => {
             fees: 1,
             marketplace: address(marketplace[0].toString()),
             systemProgram: address(SystemProgram.programId.toString())
+        },{
+            programAddress:marketplaceProgram.MINT_CRAFT_MARKETPLACE_PROGRAM_ADDRESS
         })
         const keys: AccountMeta[] = (transactionIx.accounts).map((account) => {
             return {
@@ -106,4 +108,4 @@ export const initializeUserConfig = async (userPubkey: string) => {
     }
 
 }
-initializeGlobalMarketplace()
+// initializeGlobalMarketplace()

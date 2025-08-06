@@ -1,21 +1,22 @@
-//@ts-nocheck
+
 import {z} from 'zod'
-import { procedures,router } from '..'
+import { procedures,router, rpc } from '..'
 import * as marketplaceProgram from '../../../clients/marketplaceProgram/js/src'
-import { PublicKey, SystemProgram } from '@solana/web3.js'
+import { AccountMeta, Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js'
 import { PrismaClient } from '../../database/generated/prisma'
 import { TRPCError } from '@trpc/server'
-import { address } from 'gill'
+import { AccountRole, address } from 'gill'
 import { initializeUserConfig } from '../config/marketplaceConfigs'
+import { ASSOCIATED_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@coral-xyz/anchor/dist/cjs/utils/token'
 const prismaClient=new PrismaClient()
 const findAssociatedTokenAddress = async (mint: PublicKey, owner: String): Promise<[PublicKey, number]> => {
     return await PublicKey.findProgramAddressSync(
         [
             new PublicKey(owner).toBuffer(),
-            new PublicKey(TOKEN_PROGRAM_ADDRESS).toBuffer(),
+            TOKEN_PROGRAM_ID.toBuffer(),
             mint.toBuffer(),
         ],
-        new PublicKey(ASSOCIATED_TOKEN_PROGRAM_ADDRESS)
+        ASSOCIATED_PROGRAM_ID
     );
 };
 
@@ -23,72 +24,79 @@ const findMetadataAddress = async (mint: PublicKey): Promise<[PublicKey, number]
     return await PublicKey.findProgramAddressSync(
         [
             Buffer.from("metadata"),
-            new PublicKey(TOKEN_METADATA_PROGRAM_ADDRESS).toBuffer(),
+            TOKEN_PROGRAM_ID.toBuffer(),
             mint.toBuffer(),
         ],
-        new PublicKey(TOKEN_METADATA_PROGRAM_ADDRESS)
+        new PublicKey("metaqbxxUerdq28cj1RbTgwchQrWCC9hdzvzZqCEzNs")
     );
 };
 
 export const marketplaceRouter=router({
     initilizeUserConfig:procedures.mutation(async({ctx})=>{
-       //initialize the marketplace in the anchor program config
-       //initialize the marketplace in the database
-        console.log("wallet", ctx.wallet);
-               console.log("In the initializeUserConfig");
-            //    const config=await PublicKey.findProgramAddressSync(
-            //        [Buffer.from("config")],
-            //        new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
-            //    )
-               const connection = new Connection("https://api.devnet.solana.com");
-       
-               // ✅ Derive user_config PDA
-            //    const [userConfigPda] = PublicKey.findProgramAddressSync(
-            //        [Buffer.from("user_config"), config[0].toBuffer(),new PublicKey(ctx.wallet).toBuffer()],
-            //        new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
-            //    );
-            const marketplace=PublicKey.findProgramAddressSync(
-                [Buffer.from("marketplace")],
-                new PublicKey(marketplaceProgram.MINT_CRAFT_MARKETPLACE_PROGRAM_ADDRESS)
-            )
-            const userConfigPda=PublicKey.findProgramAddressSync(
-                [Buffer.from("user"),new PublicKey(ctx.wallet).toBuffer()],
-                new PublicKey(marketplaceProgram.MINT_CRAFT_MARKETPLACE_PROGRAM_ADDRESS)
-            )
-       
-               // ✅ Check if the PDA exists
-               const accountInfo = await connection.getAccountInfo(userConfigPda, {
-                   commitment: "confirmed",
-               });
-               console.log("777777777777777",accountInfo)
-               if (accountInfo?.data) {
-                   console.log("User config already exists!");
-                   return {
-                       success: true,
-                       alreadyExists:true,
-                       message:"User configs already exists",
-                       serializedTransaction: null,
-                   };
-               } else {
-                   console.log("User config does NOT exist! Initializing...");
-       
-                   const serializedTransaction = await initializeUserConfig(ctx.wallet);
-       
-                   return {
-                       success: true,
-                       message: "User config initialized successfully",
-                       alreadyExists:false,
-                       serializedTransaction: Buffer.from(serializedTransaction).toString("base64"),
-                   };
-               }
+        try {
+            
+            //initialize the marketplace in the anchor program config
+            //initialize the marketplace in the database
+             console.log("wallet", ctx.wallet);
+                    console.log("In the initializeUserConfig for the marketplace");
+                 //    const config=await PublicKey.findProgramAddressSync(
+                 //        [Buffer.from("config")],
+                 //        new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
+                 //    )
+                    const connection = new Connection("https://api.devnet.solana.com");
+            
+                    // ✅ Derive user_config PDA
+                 //    const [userConfigPda] = PublicKey.findProgramAddressSync(
+                 //        [Buffer.from("user_config"), config[0].toBuffer(),new PublicKey(ctx.wallet).toBuffer()],
+                 //        new PublicKey(nftProgram.MINT_CRAFT_NFT_PROGRAM_PROGRAM_ADDRESS)
+                 //    );
+                 const marketplace=PublicKey.findProgramAddressSync(
+                     [Buffer.from("marketplace")],
+                     new PublicKey(marketplaceProgram.MINT_CRAFT_MARKETPLACE_PROGRAM_ADDRESS)
+                 )
+                 console.log("marketpalce is ",marketplace)
+                 const userConfigPda=PublicKey.findProgramAddressSync(
+                     [Buffer.from("user"),new PublicKey(ctx.wallet).toBuffer()],
+                     new PublicKey(marketplaceProgram.MINT_CRAFT_MARKETPLACE_PROGRAM_ADDRESS)
+                 )
+                 console.log("userConfigPda is ",userConfigPda)
+            
+                    // ✅ Check if the PDA exists
+                    const accountInfo = await connection.getAccountInfo(userConfigPda[0], {
+                        commitment: "confirmed",
+                    });
+                    console.log("777777777777777",accountInfo)
+                    if (accountInfo?.data) {
+                        console.log("User config already exists!");
+                        return {
+                            success: true,
+                            alreadyExists:true,
+                            message:"User configs already exists",
+                            serializedTransaction: null,
+                        };
+                    } else {
+                        console.log("User config does NOT exist! Initializing...");
+            
+                        const serializedTransaction = await initializeUserConfig(ctx.wallet);
+            
+                        return {
+                            success: true,
+                            message: "User config initialized successfully",
+                            alreadyExists:false,
+                            serializedTransaction: Buffer.from(serializedTransaction).toString("base64"),
+                        };
+                    }
+        } catch (error) {
+            console.log("an error occured during marketplace user initialization",error)
+        }
     }),
     listNft:procedures.input(z.object({
-        nft_mint:z.string(),
+        nft_mint_address:z.string(),
         price:z.number().positive(),
         marketplaceId:z.number()
     })).mutation(async({input,ctx})=>{
     try {
-
+        console.log("in the list nft procedure")
         // const marketplace=umi.eddsa.findPda(
         //     MINT_CRAFT_MARKETPLACE_PROGRAM_ID,
         //     [Buffer.from("marketplace")]
@@ -100,11 +108,14 @@ export const marketplaceRouter=router({
         )[0]
 
         // const listing =umi.eddsa.findPda(
-        //     MINT_CRAFT_MARKETPLACE_PROGRAM_ID,
-        //     [Buffer.from("listing"),marketplaceForPda.toBuffer(),ctx.wallet.toBuffer()]
-        // )
+            //     MINT_CRAFT_MARKETPLACE_PROGRAM_ID,
+            //     [Buffer.from("listing"),marketplaceForPda.toBuffer(),ctx.wallet.toBuffer()]
+            // )
+            let listingId=crypto.getRandomValues(new Uint32Array(1))[0] % 2_000_000
+            const idBuffer = Buffer.allocUnsafe(4);
+            idBuffer.writeUInt32LE(listingId, 0);
         const listing=await PublicKey.findProgramAddressSync(
-            [Buffer.from("listing"),marketplace.toBuffer(),new PublicKey(ctx.wallet).toBuffer()],
+            [Buffer.from("listing"),marketplace.toBuffer(),idBuffer,new PublicKey(ctx.wallet).toBuffer()],
             new PublicKey(marketplaceProgram.MINT_CRAFT_MARKETPLACE_PROGRAM_ADDRESS)
         )
         // const userConfig=umi.eddsa.findPda(
@@ -115,15 +126,16 @@ export const marketplaceRouter=router({
             [Buffer.from("user"),new PublicKey(ctx.wallet).toBuffer()],
             new PublicKey(marketplaceProgram.MINT_CRAFT_MARKETPLACE_PROGRAM_ADDRESS)
         )
-        const userMintAta=findAssociatedTokenAddress(new PublicKey(input.nft_mint),ctx.wallet)
-
+        const userMintAta=await findAssociatedTokenAddress(new PublicKey(input.nft_mint_address),ctx.wallet)
+        console.log("the listing,userConfig,userMintAta are ",listing,userConfig,userMintAta)
         const nft=await prismaClient.nFT.findUnique(
          {
             where:{
-                mintAddress:input.nft_mint
+                mintAddress:input.nft_mint_address
             }
          }   
         )
+        console.log("the nft is ",nft)
         if(!nft){
             throw new Error("NFT not found");
         }
@@ -136,11 +148,11 @@ export const marketplaceRouter=router({
         //         tokenProgramId:publicKey(TOKEN_PROGRAM_ADDRESS)
         //     }
         // )
-        const vaultMint=await findAssociatedTokenAddress(new PublicKey(input.nft_mint),listing[0].toString())
-        
+        const vaultMint=await findAssociatedTokenAddress(new PublicKey(input.nft_mint_address),listing[0].toString())
+        console.log("the vault mint is ",vaultMint) 
                      const user=await prismaClient.user.findUnique({
                         where: {
-                            wallet: ctx.wallet.toString()
+                            wallet: ctx.wallet
                         }
                     })
                     if(!user){
@@ -148,6 +160,7 @@ export const marketplaceRouter=router({
                             code: 'NOT_FOUND',      
                         })
                     }
+                    console.log("the user is ",user)
         // const transactionBuilder=await list(umi,{
         //     maker:ctx.wallet,
         //     mint:publicKey(input.nft_mint),
@@ -163,18 +176,20 @@ export const marketplaceRouter=router({
         // })
         // const transaction=await transactionBuilder.buildAndSign(umi)
         // const serializedTransaction=umi.transactions.serialize(transaction)
+        console.log("the input price is ",input)
         const transactionIx=await marketplaceProgram.getListInstruction({
-            listing:listing[0],
+            listing:address(listing[0].toString()),
             maker:address(ctx.wallet),
-            marketplace:address(marketplace[0]),
-            mint:address(input.nft_mint),
+            marketplace:address(marketplace.toString()),
+            mint:address(input.nft_mint_address),
             price:input.price,
-            userConfig:address(userConfig[0]),
-            userMintAta:address(userMintAta[0]),
-            vaultMint:address(vaultMint[0]),
-            systemProgram:address(SystemProgram.programId),
-            associatedTokenProgram:address(ASSOCIATED_TOKEN_PROGRAM_ID),
-            tokenProgram:address(TOKEN_PROGRAM_ID),
+            userConfig:address(userConfig[0].toString()),
+            userMintAta:address(userMintAta[0].toString()),
+            vaultMint:address(vaultMint[0].toString()),
+            systemProgram:address(SystemProgram.programId.toString()),
+            associatedTokenProgram:address(ASSOCIATED_PROGRAM_ID.toString()),
+            tokenProgram:address(TOKEN_PROGRAM_ID.toString()),
+            id:listingId
         })
             const id = crypto.getRandomValues(new Uint32Array(1))[0] % 2_000_000_000;
           const keys: AccountMeta[] = transactionIx.accounts.map((account) => ({
@@ -208,11 +223,12 @@ export const marketplaceRouter=router({
                 serializedTransaction:Buffer.from(serializedTransaction).toString('base64'),
                 createdAt:new Date(),
                 sellerId:user.id,
-                id:id,
                 marketplaceId:input.marketplaceId,
+                listingId:listingId
 
             }
         })
+        console.log("the pending list is ",pendingList)
 
         return{
                           success: true,
@@ -232,6 +248,7 @@ export const marketplaceRouter=router({
     })
     ).mutation(async({input,ctx})=>{
         try {
+            console.log("In the confirm listing",input)
                 const user=await prismaClient.user.findUnique({
                            where: {
                                wallet: ctx.wallet.toString()
@@ -261,6 +278,7 @@ export const marketplaceRouter=router({
                 id:pendingList.id,
                 marketplaceId:pendingList.marketplaceId,
                 isActive:true,
+                listingId:pendingList.listingId
             }
         })
         return {
