@@ -8,5 +8,6 @@
 clients/
 .env
 /clients/*
-src/clients
+/src/clients
 /.cursor
+clients
