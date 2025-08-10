@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DIRECT_URL")
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  wallet       String     @unique
+  contents     Content[]
+  listings     Listing[]
+  nfts         NFT[]      @relation("UserNFTs")
+  aiModels     AIModel[]
+  sales        Sale[]     @relation("BuyerSales")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  pendingRegistrations PendingAIModelRegistration[]  
+  pendingContentSubmission PendingContentSubmission[]
+  pendingNFTSubmissions PendingNFTSubmission[] // Fixed relation name
+  pendingListings       PendingListing[]
+}
+
+model Content {
+  id            Int       @id // Remove autoincrement since you're setting it manually
+  creatorId     Int
+  creator       User      @relation(fields: [creatorId], references: [id])
+  contentUri    String
+  contentId     Int
+  metadataUri   String
+  aiModel       String
+  prompt        String
+  contentType   Int
+  response      Bytes
+  nft           NFT?      @relation("ContentNFT") // Add explicit relation name
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model PendingContentSubmission {
+  id                    Int       @id @default(autoincrement())
+  contentId             Int       // Add this field to track the intended content ID
+  creatorId             Int
+  contentUri            String
+  metadataUri           String
+  aiModel               String
+  contentType           Int
+  prompt                String
+  response              Bytes 
+  serializedTransaction String
+  createdAt             DateTime  @default(now())
+  expiredAt             DateTime
+  user                  User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+}
+
+model NFT {
+  id           Int       @id // Remove autoincrement since you're setting it manually
+  contentId    Int?      @unique
+  content      Content?  @relation("ContentNFT", fields: [contentId], references: [id])
+  mintAddress  String    @unique
+  tokenAccount String?
+  ownerId      Int
+  owner        User      @relation("UserNFTs", fields: [ownerId], references: [id])
+  listing      Listing?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model PendingNFTSubmission {
+  id                    Int       @id @default(autoincrement())
+  nftId                 Int       // Add this field to track the intended NFT ID
+  contentId             Int?
+  mintAddress           String    @unique
+  tokenAccount          String?
+  ownerId               Int
+  expiresAt              DateTime
+  owner                 User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt             DateTime  @default(now())
+  serializedTransaction String    // Base64 encoded transaction
+}
+
+model PendingAIModelRegistration {
+  id                    Int      @id @default(autoincrement())
+  ownerId               Int
+  name                  String
+  description           String
+  apiEndpoint           String
+  headersJSON      Json
+  bodyTemplate          String
+  userPromptField       String
+  responseTemplate      String
+  finalContentField     String
+  httpMethod            String
+  royaltyPercentage     Float
+  aiModelPublicKey      String
+  modelId               BigInt      // The ID used in the blockchain transaction
+  serializedTransaction String   // Base64 encoded transaction
+  createdAt             DateTime @default(now())
+  expiresAt             DateTime
+  
+  user                  User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  @@map("pending_ai_model_registrations")
+}
+
+model AIModel {
+  id                Int       @id
+  ownerId           Int
+  owner             User      @relation(fields: [ownerId], references: [id])
+  name              String
+  description       String
+  apiEndpoint       String
+  headersJSON      Json
+  bodyTemplate          String
+  userPromptField       String
+  httpMethod            String
+  responseTemplate      String
+    finalContentField     String
+
+  royaltyPercentage Int
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  aiModelPublicKey  String
+}
+
+model Listing {
+  id             Int         @id @default(autoincrement())
+  nftId          Int         @unique
+  nft            NFT         @relation(fields: [nftId], references: [id])
+  price          BigInt
+  sellerId       Int
+    listingId     Int       @unique
+
+  seller         User        @relation(fields: [sellerId], references: [id])
+  marketplaceId  Int?
+  marketplace    Marketplace? @relation(fields: [marketplaceId], references: [id])
+  sale           Sale?
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model PendingListing{
+    id             Int         @id @default(autoincrement())
+  nftId          Int         @unique
+  listingId     Int         @unique
+  price          BigInt
+  sellerId       Int
+  marketplaceId  Int?
+  serializedTransaction String   // Base64 encoded transaction
+  createdAt             DateTime @default(now())
+  expiresAt             DateTime
+  user        User            @relation(fields: [sellerId],references: [id],onDelete: Cascade)
+}
+
+model Marketplace {
+  id           Int        @id @default(autoincrement())
+  listings     Listing[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Sale {
+  id          Int        @id @default(autoincrement())
+  listingId   Int        @unique
+  listing     Listing    @relation(fields: [listingId], references: [id])
+  buyerId     Int
+  buyer       User       @relation("BuyerSales", fields: [buyerId], references: [id])
+  amount      BigInt
+  signature   String
+  timestamp   DateTime   @default(now())
+}
