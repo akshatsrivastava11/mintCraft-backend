@@ -10,4 +10,4 @@ clients/
 /clients/*
 /src/clients
 /.cursor
-clients
+/clients/generated
